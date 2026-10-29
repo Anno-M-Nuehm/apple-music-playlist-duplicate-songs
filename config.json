@@ -1,0 +1,24 @@
+{
+  "duplicateDetection": {
+    "durationToleranceSeconds": 2.0,
+    "matchByPersistentIDFirst": true,
+    "fallbackFieldMatch": ["title", "artist", "album", "duration"],
+    "caseInsensitiveTextMatch": true
+  },
+  "playlists": {
+    "excludedNames": ["Music", "Movies", "TV Shows", "Podcasts", "Audiobooks"],
+    "includeSmartPlaylists": false
+  },
+  "aiAssist": {
+    "enabled": true,
+    "endpoint": "https://api.openai.com/v1/chat/completions",
+    "model": "gpt-4o-mini",
+    "timeoutSeconds": 20,
+    "keychainService": "com.example.PlaylistDeduplicator.ai",
+    "keychainAccount": "ai-api-key"
+  },
+  "export": {
+    "defaultFormat": "csv",
+    "reportColumns": ["group", "title", "artist", "album", "duration", "persistentID", "occurrences", "selectedForRemoval"]
+  }
+}

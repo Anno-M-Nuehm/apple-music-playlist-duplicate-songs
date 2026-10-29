@@ -1,0 +1,60 @@
+name: PlaylistDeduplicator
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    ENABLE_USER_SCRIPT_SANDBOXING: false
+
+targets:
+  PlaylistDeduplicator:
+    type: application
+    platform: macOS
+    sources:
+      - path: PlaylistDeduplicator
+      - path: config.json
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.PlaylistDeduplicator
+        PRODUCT_NAME: Playlist Deduplicator
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: true
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        INFOPLIST_KEY_NSAppleEventsUsageDescription: "Playlist Deduplicator needs to send Apple Events to Music to read your playlists and remove duplicate entries from a playlist you select."
+        CODE_SIGN_ENTITLEMENTS: PlaylistDeduplicator/PlaylistDeduplicator.entitlements
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: true
+        ENABLE_APP_SANDBOX: false
+        SWIFT_STRICT_CONCURRENCY: complete
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+  PlaylistDeduplicatorTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: PlaylistDeduplicatorTests
+    dependencies:
+      - target: PlaylistDeduplicator
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.PlaylistDeduplicatorTests
+        GENERATE_INFOPLIST_FILE: true
+
+schemes:
+  PlaylistDeduplicator:
+    build:
+      targets:
+        PlaylistDeduplicator: all
+        PlaylistDeduplicatorTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - PlaylistDeduplicatorTests
