@@ -27,7 +27,7 @@ struct ContentView: View {
                     .disabled(selectedPlaylist == nil || duplication.groups.isEmpty)
             }
             ToolbarItem(placement: .primaryAction) {
-                LibraryPickerButton(library: library) { url in
+                LibraryPickerButton { url in
                     library.selectedLibraryURL = url
                     Task { await library.load() }
                 }
