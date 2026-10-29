@@ -3,14 +3,28 @@
 Assumes a Mac with Xcode 15+ (Xcode 27 in your environment) and no
 prior setup. No third-party dependencies, no CocoaPods/SPM packages.
 
-## 1. Open the project
+## 1. Generate and open the Xcode project
+
+The project is defined in `project.yml`. Generate the Xcode project
+file from it with [XcodeGen](https://github.com/yonaskolb/XcodeGen):
+
+```bash
+$ xcodegen generate
+```
+
+(Install XcodeGen once via `brew install xcodegen`, or download a
+release binary. The step creates `PlaylistDeduplicator.xcodeproj`
+in the repository root; re-run it whenever targets or files change.)
+
+Then:
 
 1. Clone the repo (or unzip `PlaylistDeduplicator.zip`).
-2. Double-click `PlaylistDeduplicator.xcodeproj`.
-   The project uses Xcode 16+ file-system-synchronized groups, so all
-   sources, assets, entitlements, and `config.json` are picked up
-   automatically from disk.
-3. If Xcode prompts to "re-sign" or "update to recommended settings",
+2. Run `xcodegen generate` in the repo root (see above).
+3. Double-click `PlaylistDeduplicator.xcodeproj`.
+   The project uses file-system-synchronized groups, so all sources,
+   assets, entitlements, and `config.json` are picked up automatically
+   from disk.
+4. If Xcode prompts to "re-sign" or "update to recommended settings",
    accept — the project ships with automatic signing and a placeholder
    team you must replace (next step).
 
