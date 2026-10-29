@@ -131,13 +131,11 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
         _ = appleScript.compileAndReturnError(&compileError)
         guard compileError == nil else { throw Self.error(for: compileError) }
 
-        guard let target = NSAppleEventDescriptor(bundleIdentifier: Constants.App.musicAppBundleID) else {
-            throw MusicServiceError(code: .scriptFailed("target"), message: "Could not create Apple event target")
-        }
+        let target = NSAppleEventDescriptor(bundleIdentifier: Constants.App.musicAppBundleID)
         let event = NSAppleEventDescriptor.appleEvent(
             withEventClass: Constants.AppleEvents.coreSuiteCode,
             eventID: Constants.AppleEvents.subroutineEventCode,
-            descriptor: target,
+            targetDescriptor: target,
             returnID: Constants.AppleEvents.autoGenerateReturnID,
             transactionID: Constants.AppleEvents.anyTransactionID
         )
