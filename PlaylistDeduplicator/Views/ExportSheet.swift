@@ -39,7 +39,8 @@ struct ExportSheet: View {
         let exporter = ReportExporter()
         let report = exporter.report(for: duplication.groups, playlistName: playlist.name, format: format)
         let savePanel = NSSavePanel()
-        savePanel.allowedContentTypes = [.commaSeparatedText, .markdown]
+        let markdownType = UTType(filenameExtension: "md") ?? .plainText
+        savePanel.allowedContentTypes = [.commaSeparatedText, markdownType]
         savePanel.nameFieldStringValue = "duplicates-\(playlist.name.replacingOccurrences(of: "/", with: "-")).\(format.rawValue)"
         savePanel.begin { response in
             guard response == .OK, let url = savePanel.url else { return }
