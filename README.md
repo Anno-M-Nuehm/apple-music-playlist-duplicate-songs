@@ -53,8 +53,7 @@ apply to those three metadata fields.
 
 ## Status of this deliverable
 
-Complete source code, tests, assets, and docs. The `.xcodeproj` is
-generated from `project.yml` (see BUILD.md) because the project was
-authored without Xcode; run `xcodegen` once to materialize it, or let
-the Swift Package fallback guide you. Build requires macOS 13+ and
-Xcode 15+ (Swift 6 concurrency used throughout).
+Complete source code, tests, assets, docs, and a ready-to-open
+`PlaylistDeduplicator.xcodeproj` (Xcode 16+ file-system-synchronized
+groups; `project.yml` is kept for xcodegen users). Build requires
+macOS 13+ and Xcode 16+. Swift concurrency is used throughout.

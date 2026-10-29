@@ -5,8 +5,11 @@ prior setup. No third-party dependencies, no CocoaPods/SPM packages.
 
 ## 1. Open the project
 
-1. Unzip `PlaylistDeduplicator.zip` (or clone the repo).
+1. Clone the repo (or unzip `PlaylistDeduplicator.zip`).
 2. Double-click `PlaylistDeduplicator.xcodeproj`.
+   The project uses Xcode 16+ file-system-synchronized groups, so all
+   sources, assets, entitlements, and `config.json` are picked up
+   automatically from disk.
 3. If Xcode prompts to "re-sign" or "update to recommended settings",
    accept — the project ships with automatic signing and a placeholder
    team you must replace (next step).
