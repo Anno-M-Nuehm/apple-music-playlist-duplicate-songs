@@ -26,6 +26,12 @@ struct ContentView: View {
                     .keyboardShortcut("e")
                     .disabled(selectedPlaylist == nil || duplication.groups.isEmpty)
             }
+            ToolbarItem(placement: .primaryAction) {
+                LibraryPickerButton(library: library) { url in
+                    library.selectedLibraryURL = url
+                    Task { await library.load() }
+                }
+            }
         }
         .navigationTitle("Playlist Deduplicator")
         .sheet(isPresented: $exportRequested) {

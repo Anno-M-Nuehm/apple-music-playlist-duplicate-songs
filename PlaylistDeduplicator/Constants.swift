@@ -23,6 +23,11 @@ enum Constants {
         static let keychainAccount = "ai-api-key"
     }
 
+    enum Library {
+        static let fileExtension = "musiclibrary"
+        static let defaultsKey = "selectedMusicLibraryURL"
+    }
+
     enum App {
         static let musicAppBundleID = "com.apple.Music"
         static let appleEventsUsageDescription = "Playlist Deduplicator needs to send Apple Events to Music to read your playlists and remove duplicate entries from a playlist you select."

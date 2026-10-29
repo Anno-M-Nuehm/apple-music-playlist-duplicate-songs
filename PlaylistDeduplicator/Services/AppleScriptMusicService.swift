@@ -79,6 +79,39 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
         }
     }
 
+    private static let useLibraryScript = """
+        on run {libraryPath}
+            tell application "Music"
+                open (POSIX file libraryPath)
+                return name
+            end tell
+        end run
+        """
+
+    func useLibrary(at url: URL?) async throws {
+        guard let url else { return }
+        let path = url.path
+        try await queue.run { [self] in
+            _ = try execute(script: Self.useLibraryScript, handler: Constants.AppleEvents.scriptHandlerName,
+                            parameters: [path])
+        }
+        // Music switches libraries asynchronously; wait until it responds
+        // again before any scan touches the new library.
+        try await waitForMusicReady()
+    }
+
+    private func waitForMusicReady() async throws {
+        for _ in 0..<30 {
+            do {
+                try await ensureAccess()
+                return
+            } catch {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+        }
+        throw MusicServiceError(code: .musicNotRunning, message: "Music did not respond after switching libraries")
+    }
+
     func fetchPlaylists() async throws -> [Playlist] {
         try await queue.run { [self] in
             let output = try execute(script: Self.fetchPlaylistsScript, handler: Constants.AppleEvents.scriptHandlerName, parameters: [])

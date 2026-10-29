@@ -26,7 +26,13 @@ final class MockMusicService: MusicLibraryService, @unchecked Sendable {
         return MockMusicService(playlists: [p], entries: [1: entries])
     }
 
+    private(set) var activeLibraryURL: URL?
+
     func ensureAccess() async throws {}
+
+    func useLibrary(at url: URL?) async throws {
+        activeLibraryURL = url
+    }
 
     func fetchPlaylists() async throws -> [Playlist] {
         if let fetchError { throw fetchError }

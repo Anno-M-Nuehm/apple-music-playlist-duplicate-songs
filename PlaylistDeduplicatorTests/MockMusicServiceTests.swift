@@ -86,3 +86,17 @@ final class MockMusicIntegrationTests: XCTestCase {
         XCTAssertNotNil(duplication.errorMessage)
     }
 }
+
+final class LibrarySelectionTests: XCTestCase {
+    func testUseLibraryUpdatesMockAndPersistsInViewModel() async throws {
+        let service = MockMusicService(playlists: [], entries: [:])
+        let library = await LibraryViewModel(service: service)
+        let url = URL(fileURLWithPath: "/Volumes/Media/MyLibrary.musiclibrary")
+        await library.useLibrary(url)
+        let active = await service.activeLibraryURL
+        XCTAssertEqual(active?.path, url.path)
+        await library.useLibrary(nil)
+        let active2 = await service.activeLibraryURL
+        XCTAssertNil(active2)
+    }
+}

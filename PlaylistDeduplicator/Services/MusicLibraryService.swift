@@ -8,6 +8,12 @@ protocol MusicLibraryService: Sendable {
     /// Whether Music is running and scriptable (launched if needed).
     func ensureAccess() async throws
 
+    /// Makes Music open the library file at `url` before any further
+    /// calls. `nil` keeps the currently open library. Switching
+    /// libraries may relaunch Music; the call only returns once the
+    /// library is responsive.
+    func useLibrary(at url: URL?) async throws
+
     /// All user playlists, batched fetch.
     func fetchPlaylists() async throws -> [Playlist]
 

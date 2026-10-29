@@ -9,6 +9,28 @@ final class LibraryViewModel {
     private(set) var isLoading = false
     var errorMessage: String?
 
+    /// The Music library to analyze; nil means the currently open one.
+    /// Persisted across launches in UserDefaults.
+    var selectedLibraryURL: URL? {
+        didSet {
+            if let selectedLibraryURL {
+                UserDefaults.standard.set(selectedLibraryURL, forKey: Constants.Library.defaultsKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Constants.Library.defaultsKey)
+            }
+        }
+    }
+
+    var selectedLibraryName: String? {
+        selectedLibraryURL?.deletingPathExtension().lastPathComponent
+    }
+
+    /// Switches the analyzed library and rescans.
+    func useLibrary(_ url: URL?) async {
+        selectedLibraryURL = url
+        await load()
+    }
+
     private let service: MusicLibraryService
     private let config: AppConfig
     private let detector: DuplicateDetector
@@ -16,6 +38,7 @@ final class LibraryViewModel {
     init(service: MusicLibraryService, config: AppConfig = ConfigStore.load()) {
         self.service = service
         self.config = config
+        self.selectedLibraryURL = UserDefaults.standard.url(forKey: Constants.Library.defaultsKey)
         self.detector = DuplicateDetector(configuration: .init(
             durationToleranceSeconds: config.duplicateDetection.durationToleranceSeconds,
             matchByPersistentIDFirst: config.duplicateDetection.matchByPersistentIDFirst,
@@ -33,6 +56,7 @@ final class LibraryViewModel {
         defer { isLoading = false }
         do {
             try await service.ensureAccess()
+            try await service.useLibrary(at: selectedLibraryURL)
             let fetched = try await service.fetchPlaylists()
             playlists = fetched.filter { playlist in
                 if playlist.isSmart && !config.playlists.includeSmartPlaylists { return false }
