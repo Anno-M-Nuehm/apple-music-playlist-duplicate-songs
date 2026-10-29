@@ -56,4 +56,4 @@ apply to those three metadata fields.
 Complete source code, tests, assets, docs, and a ready-to-open
 `PlaylistDeduplicator.xcodeproj` (Xcode 16+ file-system-synchronized
 groups; `project.yml` is kept for xcodegen users). Build requires
-macOS 13+ and Xcode 16+. Swift concurrency is used throughout.
+macOS 14+ and Xcode 16+. Swift concurrency is used throughout.
