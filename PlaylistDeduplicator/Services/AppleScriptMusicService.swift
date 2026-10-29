@@ -3,12 +3,16 @@ import Foundation
 
 /// Real Music integration via NSAppleScript.
 ///
-/// Security: every script uses positional parameters (`on run {a, b}`),
-/// so no library data (playlist names, track titles, paths) is ever
-/// interpolated into AppleScript source text — this eliminates the
-/// AppleScript injection class entirely. Only `playlistID` and integer
-/// indexes (UInt64/Int, validated numeric types) are passed as
-/// parameters, and every operation references exactly one playlist.
+/// Security: every script is a static source string whose `run` handler
+/// takes positional parameters. Only typed, validated values (playlist
+/// persistent-ID strings, integer indexes) are passed as Apple event
+/// parameters — no library data is ever interpolated into script text,
+/// eliminating AppleScript injection. Library data only flows back as the
+/// script's return value, which is parsed, never executed.
+///
+/// Playlist targeting uses Music's persistent ID (a hex string), which is
+/// exact and stable; Music's numeric `id` can overflow Int32 event
+/// descriptors for large libraries.
 final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.example.PlaylistDeduplicator.applescript")
     private(set) var lastError: MusicServiceError?
@@ -18,7 +22,7 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
             tell application "Music"
                 set output to ""
                 repeat with p in (every user playlist)
-                    set output to output & (id of p as text) & "\\u0001" & (name of p) & "\\u0001" & (count of tracks of p as text) & "\\u0001" & ((smart of p) as text) & "\\u0002"
+                    set output to output & (persistent ID of p) & "\\u0001" & (name of p) & "\\u0001" & (count of tracks of p as text) & "\\u0001" & ((smart of p) as text) & "\\u0002"
                 end repeat
                 return output
             end tell
@@ -26,26 +30,26 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
         """
 
     private static let fetchEntriesScript = """
-        on run {playlistID}
+        on run {playlistPersistentID}
             tell application "Music"
-                set target to first user playlist whose id is playlistID
+                set target to first user playlist whose persistent ID is playlistPersistentID
                 set output to ""
                 repeat with t in (every track of target)
-                    set output to output & (id of t as text) & "\\u0001" & (name of t) & "\\u0001" & (artist of t) & "\\u0001" & (album of t) & "\\u0001" & ((duration of t) as text) & "\\u0001" & (location of t as text) & "\\u0002"
+                    set output to output & (persistent ID of t) & "\\u0001" & (name of t) & "\\u0001" & (artist of t) & "\\u0001" & (album of t) & "\\u0001" & ((duration of t) as text) & "\\u0001" & (location of t as text) & "\\u0002"
                 end repeat
                 return output
             end tell
         end run
         """
 
-    /// Deletes tracks at 1-based indexes in one playlist, using Music's
-    /// own `repeat/delete` with descending indexes so each deletion
-    /// does not shift the remaining target indexes. A count check
-    /// before and after guards against concurrent library changes.
+    /// Deletes tracks at 1-based indexes in one playlist. Indexes are
+    /// passed descending so each deletion does not shift the remaining
+    /// target indexes. Count checks before and after guard against
+    /// concurrent library changes; "MISMATCH" aborts with no changes.
     private static let removeEntriesScript = """
-        on run {playlistID, indexList, expectedCount}
+        on run {playlistPersistentID, indexList, expectedCount}
             tell application "Music"
-                set target to first user playlist whose id is playlistID
+                set target to first user playlist whose persistent ID is playlistPersistentID
                 if (count of tracks of target) is not expectedCount then
                     return "MISMATCH"
                 end if
@@ -77,7 +81,7 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
 
     func fetchPlaylists() async throws -> [Playlist] {
         try await queue.run { [self] in
-            let output = try execute(script: Self.fetchPlaylistsScript, parameters: [])
+            let output = try execute(script: Self.fetchPlaylistsScript, handler: Constants.AppleEvents.scriptHandlerName, parameters: [])
             return output
                 .split(separator: "\u{0002}", omittingEmptySubsequences: true)
                 .compactMap(Self.parsePlaylist)
@@ -86,25 +90,21 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
 
     func fetchEntries(playlistID: UInt64) async throws -> [PlaylistEntry] {
         try await queue.run { [self] in
-            let output = try execute(script: Self.fetchEntriesScript, parameters: [playlistID])
-            return output
-                .split(separator: "\u{0002}", omittingEmptySubsequences: true)
-                .enumerated()
-                .compactMap { Self.parseEntry($0.element, playlistID: playlistID, index: $0.offset + 1) }
+            try executeFetchEntries(playlistID: playlistID)
         }
     }
 
     func removeEntries(playlistID: UInt64, indexes: [Int]) async throws {
         try await queue.run { [self] in
-            let entries = try self.executeFetchEntries(playlistID: playlistID)
+            let entries = try executeFetchEntries(playlistID: playlistID)
             let sorted = Set(indexes).sorted(by: >)
             guard !entries.isEmpty,
                   !sorted.isEmpty,
                   sorted.allSatisfy({ (1...entries.count).contains($0) }) else {
                 throw MusicServiceError(code: .safetyCheckFailed, message: "Index out of range")
             }
-            let parameters: [Any] = [playlistID, sorted, entries.count]
-            let result = try execute(script: Self.removeEntriesScript, parameters: parameters)
+            let result = try execute(script: Self.removeEntriesScript, handler: Constants.AppleEvents.scriptHandlerName,
+                                    parameters: [Self.persistentIDString(playlistID), sorted, entries.count])
             guard result == "OK" else {
                 throw MusicServiceError(code: .safetyCheckFailed, message: "Playlist changed during removal")
             }
@@ -112,48 +112,77 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
     }
 
     private func executeFetchEntries(playlistID: UInt64) throws -> [PlaylistEntry] {
-        let output = try execute(script: Self.fetchEntriesScript, parameters: [playlistID])
+        let output = try execute(script: Self.fetchEntriesScript, handler: Constants.AppleEvents.scriptHandlerName,
+                                 parameters: [Self.persistentIDString(playlistID)])
         return output
             .split(separator: "\u{0002}", omittingEmptySubsequences: true)
             .enumerated()
             .compactMap { Self.parseEntry($0.element, playlistID: playlistID, index: $0.offset + 1) }
     }
 
-    private func execute(script source: String, parameters: [Any]) throws -> String {
+    /// Compiles `source`, builds a subroutine Apple event (`«event aevtpsbr»`
+    /// with handler name in `snam` and parameters as the direct object), and
+    /// executes it with the compiled script's context.
+    private func execute(script source: String, handler: String, parameters: [Any]) throws -> String {
+        var compileError: NSDictionary?
         guard let appleScript = NSAppleScript(source: source) else {
-            throw MusicServiceError(code: .scriptFailed("init"), message: "Could not compile script")
+            throw MusicServiceError(code: .scriptFailed("init"), message: "Could not create script")
         }
-        let parametersDescriptor = NSAppleEventDescriptor.list()
+        _ = appleScript.compileAndReturnError(&compileError)
+        guard compileError == nil else { throw Self.error(for: compileError) }
+
+        guard let target = NSAppleEventDescriptor(bundleIdentifier: Constants.App.musicAppBundleID) else {
+            throw MusicServiceError(code: .scriptFailed("target"), message: "Could not create Apple event target")
+        }
+        let event = NSAppleEventDescriptor.appleEvent(
+            withEventClass: Constants.AppleEvents.coreSuiteCode,
+            eventID: Constants.AppleEvents.subroutineEventCode,
+            descriptor: target,
+            returnID: Constants.AppleEvents.autoGenerateReturnID,
+            transactionID: Constants.AppleEvents.anyTransactionID
+        )
+        event.setDescriptor(NSAppleEventDescriptor(string: handler), forKeyword: Constants.AppleEvents.subroutineNameCode)
+
+        let arguments = NSAppleEventDescriptor.list()
         for parameter in parameters.reversed() {
-            parametersDescriptor.insert(Self.descriptor(for: parameter), at: 0)
+            arguments.insert(Self.descriptor(for: parameter), at: 1)
         }
-        if let event = appleScript.appleEvent {
-            event.setDescriptor(parametersDescriptor, forKeyword: keyDirectObject)
-        }
-        var error: NSDictionary?
-        let reply = appleScript.executeAndReturnError(&error)
-        guard error == nil else { throw Self.error(for: error) }
+        event.setDescriptor(arguments, forKeyword: Constants.AppleEvents.directObjectCode)
+
+        var executionError: NSDictionary?
+        let reply = appleScript.executeAppleEvent(event, error: &executionError)
+        guard executionError == nil else { throw Self.error(for: executionError) }
         return reply.stringValue ?? ""
+    }
+
+    /// Music persistent IDs are hex strings; keeping them as strings avoids
+    /// any numeric conversion loss and keeps them out of script text.
+    private static func persistentIDString(_ id: UInt64) -> String {
+        String(id, radix: Constants.AppleEvents.persistentIDRadix, uppercase: true)
     }
 
     private static func descriptor(for value: Any) -> NSAppleEventDescriptor {
         switch value {
-        case let int as Int: return NSAppleEventDescriptor(int32: Int32(clamping: int))
-        case let double as Double: return NSAppleEventDescriptor(double: double)
-        case let string as String: return NSAppleEventDescriptor(string: string)
+        case let int as Int:
+            return NSAppleEventDescriptor(int32: Int32(clamping: int))
+        case let double as Double:
+            return NSAppleEventDescriptor(double: double)
+        case let string as String:
+            return NSAppleEventDescriptor(string: string)
         case let list as [Int]:
             let descriptor = NSAppleEventDescriptor.list()
-            for item in list.reversed() { descriptor.insert(NSAppleEventDescriptor(int32: Int32(clamping: item)), at: 0) }
+            for item in list.reversed() {
+                descriptor.insert(NSAppleEventDescriptor(int32: Int32(clamping: item)), at: 1)
+            }
             return descriptor
         default:
-            let string = String(describing: value)
-            return NSAppleEventDescriptor(string: string)
+            return NSAppleEventDescriptor(string: String(describing: value))
         }
     }
 
     private static func parsePlaylist(_ record: Substring) -> Playlist? {
         let fields = record.split(separator: "\u{0001}", omittingEmptySubsequences: false)
-        guard fields.count == 4, let id = UInt64(fields[0]) else { return nil }
+        guard fields.count == 4, let id = UInt64(fields[0], radix: Constants.AppleEvents.persistentIDRadix) else { return nil }
         return Playlist(
             id: id,
             name: String(fields[1]),
@@ -164,7 +193,7 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
 
     private static func parseEntry(_ record: Substring, playlistID: UInt64, index: Int) -> PlaylistEntry? {
         let fields = record.split(separator: "\u{0001}", omittingEmptySubsequences: false)
-        guard fields.count == 6, let id = UInt64(fields[0]) else { return nil }
+        guard fields.count == 6, let id = UInt64(fields[0], radix: Constants.AppleEvents.persistentIDRadix) else { return nil }
         let location = fields[5].isEmpty ? nil : URL(fileURLWithPath: String(fields[5]))
         let track = Track(
             persistentID: id,
