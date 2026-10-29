@@ -2,7 +2,7 @@ name: PlaylistDeduplicator
 options:
   bundleIdPrefix: com.example
   deploymentTarget:
-    macOS: "13.0"
+    macOS: "14.0"
   createIntermediateGroups: true
 
 settings:
