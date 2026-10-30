@@ -49,7 +49,7 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
     }
 
     private func userPlaylists(in app: MusicApplication) throws -> SBElementArray {
-        guard let playlists = app.userPlaylists() as SBElementArray? else {
+        guard let playlists = app.userPlaylists else {
             throw MusicServiceError(code: .scriptFailed("userPlaylists"), message: "Music returned no user playlists")
         }
         return playlists
@@ -84,7 +84,7 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
         }
         try await MainActor.run { [self] in
             let app = try musicApp()
-            app.open?([url])
+            app.open([url])
         }
         try await waitForMusicReady()
         activeLibraryPath = path
@@ -112,7 +112,7 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
                 result.append(Playlist(
                     id: UInt64(playlist.id),
                     name: playlist.name ?? "",
-                    trackCount: playlist.tracks()?.count ?? 0,
+                    trackCount: playlist.tracks?.count ?? 0,
                     isSmart: playlist.smart
                 ))
             }
@@ -124,7 +124,7 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
         try await MainActor.run { [self] in
             let app = try musicApp()
             let playlist = try playlistObject(id: playlistID, in: app)
-            guard let tracks = playlist.tracks() as SBElementArray? else {
+            guard let tracks = playlist.tracks else {
                 throw MusicServiceError(code: .scriptFailed("tracks"), message: "Playlist returned no tracks")
             }
             var entries: [PlaylistEntry] = []
@@ -151,7 +151,7 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
         try await MainActor.run { [self] in
             let app = try musicApp()
             let playlist = try playlistObject(id: playlistID, in: app)
-            guard let tracks = playlist.tracks() as SBElementArray? else {
+            guard let tracks = playlist.tracks else {
                 throw MusicServiceError(code: .scriptFailed("tracks"), message: "Playlist returned no tracks")
             }
             let count = tracks.count
@@ -164,7 +164,7 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
             for index in sorted {
                 tracks.removeObject(at: index - 1)
             }
-            let newCount = playlist.tracks()?.count ?? count
+            let newCount = playlist.tracks?.count ?? count
             guard newCount == count - sorted.count else {
                 throw MusicServiceError(code: .safetyCheckFailed,
                                         message: "Playlist changed during removal (\(count) → \(newCount), expected \(count - sorted.count))")
