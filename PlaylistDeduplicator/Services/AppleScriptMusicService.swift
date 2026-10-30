@@ -184,6 +184,13 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
 
     /// Compiles `source`, builds a subroutine Apple event and executes it
     /// with the compiled script's context.
+    ///
+    /// The event must be addressed to this script's own context
+    /// (nullDescriptor) — addressing it to Music (error -1708,
+    /// errAENoSuchHandler) makes Music look for the handler in its own
+    /// scripting dictionary, where no `run` handler exists. The `tell
+    /// application "Music"` blocks inside the scripts route the actual
+    /// work to Music.
     private func execute(script source: String, handler: String, parameters: [Any]) throws -> String {
         var compileError: NSDictionary?
         guard let appleScript = NSAppleScript(source: source) else {
@@ -192,7 +199,7 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
         _ = appleScript.compileAndReturnError(&compileError)
         guard compileError == nil else { throw Self.error(for: compileError) }
 
-        let target = NSAppleEventDescriptor(bundleIdentifier: Constants.App.musicAppBundleID)
+        let target = NSAppleEventDescriptor.nullDescriptor()
         let event = NSAppleEventDescriptor.appleEvent(
             withEventClass: Constants.AppleEvents.coreSuiteCode,
             eventID: Constants.AppleEvents.subroutineEventCode,
