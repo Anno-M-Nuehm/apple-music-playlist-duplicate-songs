@@ -4,6 +4,9 @@ options:
   deploymentTarget:
     macOS: "27.0"
   createIntermediateGroups: true
+  projectFormat: Xcode 27.0
+  xcodeVersion: "27.0"
+  compatibilityVersion: "27.0"
 
 settings:
   base:
