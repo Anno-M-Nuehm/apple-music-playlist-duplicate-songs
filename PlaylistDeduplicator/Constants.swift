@@ -34,6 +34,10 @@ enum Constants {
         static let musicAccessErrorDomain = "com.example.PlaylistDeduplicator.music"
     }
 
+    enum Track {
+        static let persistentIDRadix = 16
+    }
+
     enum AppleEvents {
         // Apple Event four-char codes (OSType) for calling a script handler.
         static let coreSuiteCode: UInt32 = 0x61657674        // 'aevt'

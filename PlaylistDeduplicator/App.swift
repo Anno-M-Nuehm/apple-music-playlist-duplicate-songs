@@ -6,7 +6,7 @@ struct PlaylistDeduplicatorApp: App {
     @State private var duplication: DuplicationViewModel
 
     init() {
-        let musicService = AppleScriptMusicService()
+        let musicService = ScriptingBridgeMusicService()
         let config = ConfigStore.load()
         _library = State(initialValue: LibraryViewModel(service: musicService, config: config))
         _duplication = State(initialValue: DuplicationViewModel(service: musicService, config: config))
