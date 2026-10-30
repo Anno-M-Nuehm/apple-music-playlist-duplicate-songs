@@ -107,8 +107,10 @@ struct DuplicateDetector: Sendable {
             for entry in group.dropFirst() { union(first, entry.id) }
         }
         var merged: [String: [PlaylistEntry]] = [:]
+        var seen: Set<String> = []
         for group in groups {
-            for entry in group {
+            for entry in group where !seen.contains(entry.id) {
+                seen.insert(entry.id)
                 merged[find(entry.id), default: []].append(entry)
             }
         }

@@ -52,8 +52,11 @@ struct ContentView: View {
         .onChange(of: selectedPlaylist) { _, playlist in
             if let playlist {
                 Task {
-                    await library.scan(playlist: playlist)
+                    // Single fetch: DuplicationViewModel fetches and
+                    // detects; the count is recorded with the library.
                     await duplication.load(playlist: playlist)
+                    library.recordScan(playlist: playlist,
+                                       duplicateCount: duplication.groups.count)
                 }
             }
         }

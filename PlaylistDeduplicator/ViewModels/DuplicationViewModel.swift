@@ -40,8 +40,25 @@ final class DuplicationViewModel {
         currentPlaylist = playlist
         defer { isLoading = false }
         do {
-            let entries = try await service.fetchEntries(playlistID: playlist.id)
-            groups = detector.duplicateGroups(in: entries)
+            // Timeout-bounded fetch: one unresponsive playlist must not
+            // hang the UI.
+            let entries: [PlaylistEntry]? = await withTaskGroup(of: [PlaylistEntry]?.self) { group in
+                group.addTask { [service] in
+                    try? await service.fetchEntries(playlistID: playlist.id)
+                }
+                group.addTask {
+                    try? await Task.sleep(nanoseconds: 20_000_000_000)
+                    return nil
+                }
+                let first = await group.next() ?? nil
+                group.cancelAll()
+                return first ?? nil
+            }
+            guard let fetched = entries else {
+                errorMessage = "Playlist did not respond within 20 s — try again."
+                return
+            }
+            groups = detector.duplicateGroups(in: fetched)
             selectedForRemoval = Set(groups.flatMap(\.removals).map(\.id))
         } catch let error as MusicServiceError {
             errorMessage = error.message

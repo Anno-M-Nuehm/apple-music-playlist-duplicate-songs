@@ -52,28 +52,13 @@ final class LibraryViewModel {
         playlists.filter { (duplicateCounts[$0.id] ?? 0) > 0 }
     }
 
-    /// Scans one playlist for duplicates and caches the count.
-    /// Called when the user selects a playlist; bounded by a timeout so
-    /// a single unresponsive playlist cannot hang the UI.
-    func scan(playlist: Playlist) async {
-        guard duplicateCounts[playlist.id] == nil, playlist.trackCount > 1 else { return }
-        let entries: [PlaylistEntry]? = await withTaskGroup(of: [PlaylistEntry]?.self) { group in
-            group.addTask { [service] in
-                try? await service.fetchEntries(playlistID: playlist.id)
-            }
-            group.addTask {
-                try? await Task.sleep(nanoseconds: 20_000_000_000)
-                return nil
-            }
-            let first = await group.next() ?? nil
-            group.cancelAll()
-            return first ?? nil
-        }
-        if let entries {
-            var counts = duplicateCounts
-            counts[playlist.id] = detector.duplicateGroups(in: entries).count
-            duplicateCounts = counts
-        }
+    /// Records the duplicate count for a playlist computed elsewhere
+    /// (the selection flow fetches entries exactly once, in
+    /// DuplicationViewModel, then reports the group count here).
+    func recordScan(playlist: Playlist, duplicateCount: Int) {
+        var counts = duplicateCounts
+        counts[playlist.id] = duplicateCount
+        duplicateCounts = counts
     }
 
     func load() async {
