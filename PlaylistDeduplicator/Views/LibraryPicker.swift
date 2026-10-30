@@ -7,12 +7,10 @@ struct LibraryPickerButton: View {
     @Environment(LibraryViewModel.self) private var library
     let onPick: (URL?) -> Void
 
-    @State private var isPresentingPicker = false
-
     var body: some View {
         Menu {
             Button("Current Music Library") { onPick(nil) }
-            Button("Choose Library…") { isPresentingPicker = true }
+            Button("Choose Library…") { chooseLibrary() }
             if let selected = library.selectedLibraryURL {
                 Divider()
                 Button("Use “\(selected.deletingPathExtension().lastPathComponent)”") {
@@ -26,12 +24,23 @@ struct LibraryPickerButton: View {
                     .lineLimit(1)
             }
         }
-        .fileImporter(isPresented: $isPresentingPicker,
-                      allowedContentTypes: [.init(filenameExtension: Constants.Library.fileExtension, conformingTo: .data)!],
-                      allowsMultipleSelection: false) { result in
-            guard case .success(let urls) = result, let url = urls.first else { return }
+        .help("Choose which Apple Music Library to analyze")
+    }
+
+    /// NSOpenPanel (not fileImporter): `.musiclibrary` is a package
+    /// (directory bundle), which SwiftUI's fileImporter cannot select.
+    private func chooseLibrary() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.treatsFilePackagesAsDirectories = false
+        panel.message = "Choose an Apple Music Library file (.musiclibrary)"
+        let musicDir = FileManager.default.urls(for: .musicDirectory, in: .userDomainMask).first
+        panel.directoryURL = musicDir
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
             onPick(url)
         }
-        .help("Choose which Apple Music Library to analyze")
     }
 }
