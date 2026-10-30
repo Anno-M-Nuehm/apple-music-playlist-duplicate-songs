@@ -130,10 +130,11 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
     func fetchPlaylists() async throws -> [Playlist] {
         try await MainActor.run { [self] in
             let app = try musicApp()
-            let playlists = try allPlaylists(in: app)
+            let elementArray = try allPlaylists(in: app)
+            // Batch: one Apple event for all playlists.
+            let objects = elementArray.array() as? [NSObject] ?? []
             var result: [Playlist] = []
-            for index in 0..<playlists.count {
-                guard let object = playlists.object(at: index) as? NSObject else { continue }
+            for object in objects {
                 let playlist = unsafeBitCast(object, to: MusicPlaylist.self)
                 guard isOrdinary(playlist) else { continue }
                 result.append(Playlist(
@@ -151,16 +152,19 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
         try await MainActor.run { [self] in
             let app = try musicApp()
             let playlist = try playlistObject(id: playlistID, in: app)
-            guard let tracks = playlist.tracks else {
+            guard let elementArray = playlist.tracks else {
                 throw MusicServiceError(code: .scriptFailed("tracks"), message: "Playlist returned no tracks")
             }
+            // Batch: `array()` fetches every track of the playlist in ONE
+            // Apple event; subsequent property access is served from the
+            // local cache instead of one round-trip per track.
+            let tracks = elementArray.array() as? [NSObject] ?? []
             var entries: [PlaylistEntry] = []
-            for index in 0..<tracks.count {
-                guard let object = tracks.object(at: index) as? NSObject else { continue }
+            for (position, object) in tracks.enumerated() {
                 let track = unsafeBitCast(object, to: MusicTrack.self)
                 entries.append(PlaylistEntry(
                     playlistID: playlistID,
-                    index: index + 1,
+                    index: position + 1,
                     track: Track(
                         persistentID: Self.parsePersistentID(track.persistentID),
                         title: track.name ?? "",
@@ -179,10 +183,10 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
         try await MainActor.run { [self] in
             let app = try musicApp()
             let playlist = try playlistObject(id: playlistID, in: app)
-            guard let tracks = playlist.tracks else {
+            guard let elementArray = playlist.tracks else {
                 throw MusicServiceError(code: .scriptFailed("tracks"), message: "Playlist returned no tracks")
             }
-            let count = tracks.count
+            let count = elementArray.count
             let sorted = Set(indexes).sorted(by: >)
             guard !sorted.isEmpty,
                   sorted.allSatisfy({ (1...max(count, 1)).contains($0) }) else {
@@ -190,7 +194,7 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
             }
             // Descending: removing index i shifts only later elements.
             for index in sorted {
-                tracks.removeObject(at: index - 1)
+                elementArray.removeObject(at: index - 1)
             }
             let newCount = playlist.tracks?.count ?? count
             guard newCount == count - sorted.count else {

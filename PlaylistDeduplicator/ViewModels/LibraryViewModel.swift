@@ -71,10 +71,16 @@ final class LibraryViewModel {
                 if playlist.isSmart && !config.playlists.includeSmartPlaylists { return false }
                 return !config.playlists.excludedNames.contains(playlist.name)
             }
+            // Progressive scan: update per playlist so the middle pane
+            // populates incrementally instead of after a long block.
+            // Playlists with fewer than 2 tracks cannot contain
+            // duplicates and are skipped without an Apple event.
             var counts: [UInt64: Int] = [:]
-            for playlist in playlists {
-                let entries = try await service.fetchEntries(playlistID: playlist.id)
-                counts[playlist.id] = detector.duplicateGroups(in: entries).count
+            for playlist in playlists where playlist.trackCount > 1 {
+                if let entries = try? await service.fetchEntries(playlistID: playlist.id) {
+                    counts[playlist.id] = detector.duplicateGroups(in: entries).count
+                    duplicateCounts = counts
+                }
             }
             duplicateCounts = counts
         } catch let error as MusicServiceError {
