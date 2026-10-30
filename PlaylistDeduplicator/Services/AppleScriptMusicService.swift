@@ -22,7 +22,7 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
             tell application "Music"
                 set output to ""
                 repeat with p in (every user playlist)
-                    set output to output & (persistent ID of p) & "\" & (name of p) & "\" & (count of tracks of p as text) & "\" & ((smart of p) as text) & "\"
+                    set output to output & (persistent ID of p) & "\\u{0001}" & (name of p) & "\\u{0001}" & (count of tracks of p as text) & "\\u{0001}" & ((smart of p) as text) & "\\u{0002}"
                 end repeat
                 return output
             end tell
@@ -35,7 +35,7 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
                 set target to first user playlist whose persistent ID is playlistPersistentID
                 set output to ""
                 repeat with t in (every track of target)
-                    set output to output & (persistent ID of t) & "\" & (name of t) & "\" & (artist of t) & "\" & (album of t) & "\" & ((duration of t) as text) & "\" & (location of t as text) & "\"
+                    set output to output & (persistent ID of t) & "\\u{0001}" & (name of t) & "\\u{0001}" & (artist of t) & "\\u{0001}" & (album of t) & "\\u{0001}" & ((duration of t) as text) & "\\u{0001}" & (location of t as text) & "\\u{0002}"
                 end repeat
                 return output
             end tell
