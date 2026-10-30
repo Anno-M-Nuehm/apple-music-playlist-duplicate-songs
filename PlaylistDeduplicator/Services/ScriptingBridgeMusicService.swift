@@ -22,7 +22,9 @@ import ScriptingBridge
 ///   another playlist. A count check after removal verifies the result.
 /// - All work runs on a serial queue; the UI never blocks.
 final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendable {
-    private let queue = DispatchQueue(label: "com.example.PlaylistDeduplicator.scriptingbridge")
+    /// SBApplication and all SB objects are NOT thread-safe; every
+    /// scripting call must run on the main thread (main actor).
+    /// Off-main use crashes with EXC_BAD_ACCESS.
     private var activeLibraryPath: String?
     private(set) var lastError: MusicServiceError?
 
@@ -91,7 +93,7 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
     // MARK: - MusicLibraryService
 
     func ensureAccess() async throws {
-        try await queue.run { [self] in
+        try await MainActor.run { [self] in
             let app = try musicApp()
             guard Self.string(app, "name") != nil else {
                 throw MusicServiceError(code: .musicNotRunning, message: "Music did not respond")
@@ -106,7 +108,7 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
             try await ensureAccess()
             return
         }
-        try await queue.run { [self] in
+        try await MainActor.run { [self] in
             let app = try musicApp()
             _ = app.perform(Selector("open:"), with: url as NSURL)?.takeUnretainedValue()
         }
@@ -127,7 +129,7 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
     }
 
     func fetchPlaylists() async throws -> [Playlist] {
-        try await queue.run { [self] in
+        try await MainActor.run { [self] in
             let app = try musicApp()
             guard let playlists = Self.elementArray(app, "playlists") else {
                 throw MusicServiceError(code: .scriptFailed("playlists"), message: "Music returned no playlists element")
@@ -147,7 +149,7 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
     }
 
     func fetchEntries(playlistID: UInt64) async throws -> [PlaylistEntry] {
-        try await queue.run { [self] in
+        try await MainActor.run { [self] in
             let app = try musicApp()
             let playlist = try playlistObject(id: playlistID, in: app)
             let tracks = try Self.elementArray(playlist, "tracks") ?? {
@@ -174,7 +176,7 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
     }
 
     func removeEntries(playlistID: UInt64, indexes: [Int]) async throws {
-        try await queue.run { [self] in
+        try await MainActor.run { [self] in
             let app = try musicApp()
             let playlist = try playlistObject(id: playlistID, in: app)
             let tracks = try Self.elementArray(playlist, "tracks") ?? {
@@ -216,16 +218,5 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
         return UInt64(raw, radix: Constants.Track.persistentIDRadix)
             ?? UInt64(raw)
             ?? UInt64(abs(raw.hashValue))
-    }
-}
-
-private extension DispatchQueue {
-    func run<T>(_ work: @escaping () throws -> T) async throws -> T {
-        try await withCheckedThrowingContinuation { continuation in
-            self.async {
-                do { continuation.resume(returning: try work()) }
-                catch { continuation.resume(throwing: error) }
-            }
-        }
     }
 }
