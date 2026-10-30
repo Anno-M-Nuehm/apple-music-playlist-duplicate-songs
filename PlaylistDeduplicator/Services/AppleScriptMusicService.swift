@@ -128,7 +128,7 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
         try await queue.run { [self] in
             let output = try execute(script: Self.fetchPlaylistsScript, handler: Constants.AppleEvents.scriptHandlerName, parameters: [])
             return output
-                .split(separator: recordSep, omittingEmptySubsequences: true)
+                .split(separator: "\u{2}", omittingEmptySubsequences: true)
                 .compactMap(Self.parsePlaylist)
         }
     }
@@ -160,7 +160,7 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
         let output = try execute(script: Self.fetchEntriesScript, handler: Constants.AppleEvents.scriptHandlerName,
                                  parameters: [Self.persistentIDString(playlistID)])
         return output
-            .split(separator: recordSep, omittingEmptySubsequences: true)
+            .split(separator: "\u{2}", omittingEmptySubsequences: true)
             .enumerated()
             .compactMap { Self.parseEntry($0.element, playlistID: playlistID, index: $0.offset + 1) }
     }
@@ -224,7 +224,7 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
     }
 
     private static func parsePlaylist(_ record: Substring) -> Playlist? {
-        let fields = record.split(separator: fieldSep, omittingEmptySubsequences: false)
+        let fields = record.split(separator: "\u{1}", omittingEmptySubsequences: false)
         guard fields.count == 4, let id = UInt64(fields[0], radix: Constants.AppleEvents.persistentIDRadix) else { return nil }
         return Playlist(
             id: id,
@@ -235,7 +235,7 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
     }
 
     private static func parseEntry(_ record: Substring, playlistID: UInt64, index: Int) -> PlaylistEntry? {
-        let fields = record.split(separator: fieldSep, omittingEmptySubsequences: false)
+        let fields = record.split(separator: "\u{1}", omittingEmptySubsequences: false)
         guard fields.count == 6, let id = UInt64(fields[0], radix: Constants.AppleEvents.persistentIDRadix) else { return nil }
         let location = fields[5].isEmpty ? nil : URL(fileURLWithPath: String(fields[5]))
         let track = Track(
