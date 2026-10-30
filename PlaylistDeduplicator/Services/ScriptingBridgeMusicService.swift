@@ -131,10 +131,12 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
         try await MainActor.run { [self] in
             let app = try musicApp()
             let elementArray = try allPlaylists(in: app)
-            // Batch: `get()` — one Apple event for all playlists.
-            let objects = (elementArray.get() as? [NSObject]) ?? []
+            // Per-index iteration: the `playlists` element includes the
+            // huge library sources, so a batched get() over it blocks.
+            // Index access sends a small, bounded event per playlist.
             var result: [Playlist] = []
-            for object in objects {
+            for index in 0..<elementArray.count {
+                guard let object = elementArray.object(at: index) as? NSObject else { continue }
                 let playlist = unsafeBitCast(object, to: MusicPlaylist.self)
                 guard isOrdinary(playlist) else { continue }
                 result.append(Playlist(
