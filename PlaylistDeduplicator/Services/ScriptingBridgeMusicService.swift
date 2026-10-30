@@ -194,11 +194,13 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
             for (position, record) in output.split(separator: "\u{2}", omittingEmptySubsequences: true).enumerated() {
                 let fields = record.split(separator: "\u{1}", omittingEmptySubsequences: false)
                 guard fields.count == 5 else { continue }
+                let rawID = String(fields[0])
+                let persistentID = Self.parsePersistentID(rawID)
                 entries.append(PlaylistEntry(
                     playlistID: playlistID,
                     index: position + 1,
                     track: Track(
-                        persistentID: Self.parsePersistentID(String(fields[0])),
+                        persistentID: persistentID != 0 ? persistentID : Self.nextSyntheticID(),
                         title: String(fields[1]),
                         artist: String(fields[2]),
                         album: String(fields[3]),
@@ -242,10 +244,22 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
         return MusicServiceError(code: .scriptFailed(number), message: message)
     }
 
+    /// Music persistent IDs are hex strings ("A1B2C3..."). If parsing
+    /// fails, the track gets a unique synthetic ID so it can never be
+    /// grouped with another track by mistake — a fabricated or colliding
+    /// ID would create phantom duplicate groups.
     private static func parsePersistentID(_ raw: String?) -> UInt64 {
-        guard let raw, !raw.isEmpty else { return 0 }
-        return UInt64(raw, radix: Constants.Track.persistentIDRadix)
-            ?? UInt64(raw)
-            ?? UInt64(abs(raw.hashValue))
+        guard let raw, !raw.isEmpty,
+              let parsed = UInt64(raw, radix: Constants.Track.persistentIDRadix) else {
+            return 0
+        }
+        return parsed
+    }
+
+    private static var syntheticIDCounter: UInt64 = 0
+    /// Unique non-zero ID for tracks without a parseable persistent ID.
+    private static func nextSyntheticID() -> UInt64 {
+        syntheticIDCounter &+= 1
+        return syntheticIDCounter
     }
 }
