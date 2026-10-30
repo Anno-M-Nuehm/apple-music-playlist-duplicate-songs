@@ -22,6 +22,15 @@ struct ContentView: View {
         .frame(minWidth: 900, minHeight: 520)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
+                Button {
+                    Task { await library.load() }
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                .keyboardShortcut("r")
+                .help("Reload playlists from the current Music Library")
+            }
+            ToolbarItem(placement: .primaryAction) {
                 Button("Export Report…") { exportRequested = true }
                     .keyboardShortcut("e")
                     .disabled(selectedPlaylist == nil || duplication.groups.isEmpty)

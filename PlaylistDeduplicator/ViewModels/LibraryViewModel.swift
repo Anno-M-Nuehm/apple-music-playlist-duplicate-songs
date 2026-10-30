@@ -63,6 +63,9 @@ final class LibraryViewModel {
                 // back to scanning the currently open library.
                 errorMessage = "Could not switch library — using the currently open one.\n\(error.localizedDescription)"
             }
+            // Special sources (Music, Movies, ...) are already filtered by
+            // the service via specialKind; name-based exclusion is only a
+            // secondary, localization-independent safety net.
             let fetched = try await service.fetchPlaylists()
             playlists = fetched.filter { playlist in
                 if playlist.isSmart && !config.playlists.includeSmartPlaylists { return false }

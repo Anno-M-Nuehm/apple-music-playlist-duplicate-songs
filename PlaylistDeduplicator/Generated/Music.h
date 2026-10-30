@@ -21,12 +21,15 @@
 @end
 
 @interface MusicApplication : SBApplication
-@property (readonly) SBElementArray *userPlaylists;
+@property (readonly) SBElementArray *playlists;
 @property (copy, readonly) NSString *name;
 @end
 
 @interface MusicPlaylist : MusicItem
 @property (readonly) SBElementArray *tracks;
+// Music ESpecialPlaylistKind: 0 = none (ordinary playlist), others are
+// the special library sources (Music, Movies, TV Shows, ...).
+@property (readonly) NSInteger specialKind;
 @property (readonly) NSInteger id;
 @property (copy) NSString *name;
 @property (readonly) BOOL smart;

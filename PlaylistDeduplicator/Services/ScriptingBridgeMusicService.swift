@@ -58,20 +58,28 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
         return nil
     }
 
-    private func userPlaylists(in app: MusicApplication) throws -> SBElementArray {
-        guard let playlists = app.userPlaylists else {
-            throw MusicServiceError(code: .scriptFailed("userPlaylists"), message: "Music returned no user playlists")
+    /// Every playlist (user, smart, folder-nested). `userPlaylists` in
+    /// Music's dictionary omits smart and folder-nested playlists, so the
+    /// broader `playlists` element is used and special sources are
+    /// filtered by `specialKind` below.
+    private func allPlaylists(in app: MusicApplication) throws -> SBElementArray {
+        guard let playlists = app.playlists else {
+            throw MusicServiceError(code: .scriptFailed("playlists"), message: "Music returned no playlists")
         }
         return playlists
     }
 
+    private func isOrdinary(_ playlist: MusicPlaylist) -> Bool {
+        playlist.specialKind == 0
+    }
+
     private func playlistObject(id: UInt64, in app: MusicApplication) throws -> MusicUserPlaylist {
-        let playlists = try userPlaylists(in: app)
+        let playlists = try allPlaylists(in: app)
         for index in 0..<playlists.count {
             if let object = playlists.object(at: index) as? NSObject {
-                let playlist = unsafeBitCast(object, to: MusicUserPlaylist.self)
-                if playlist.id == Int(id) {
-                    return playlist
+                let playlist = unsafeBitCast(object, to: MusicPlaylist.self)
+                if isOrdinary(playlist), playlist.id == Int(id) {
+                    return unsafeBitCast(object, to: MusicUserPlaylist.self)
                 }
             }
         }
@@ -122,11 +130,12 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
     func fetchPlaylists() async throws -> [Playlist] {
         try await MainActor.run { [self] in
             let app = try musicApp()
-            let playlists = try userPlaylists(in: app)
+            let playlists = try allPlaylists(in: app)
             var result: [Playlist] = []
             for index in 0..<playlists.count {
                 guard let object = playlists.object(at: index) as? NSObject else { continue }
-                let playlist = unsafeBitCast(object, to: MusicUserPlaylist.self)
+                let playlist = unsafeBitCast(object, to: MusicPlaylist.self)
+                guard isOrdinary(playlist) else { continue }
                 result.append(Playlist(
                     id: UInt64(playlist.id),
                     name: playlist.name ?? "",
