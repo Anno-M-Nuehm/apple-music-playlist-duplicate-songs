@@ -23,7 +23,6 @@
 @interface MusicApplication : SBApplication
 @property (readonly) SBElementArray *userPlaylists;
 @property (copy, readonly) NSString *name;
-- (void)open:(NSArray<NSURL *> *)x;
 @end
 
 @interface MusicPlaylist : MusicItem

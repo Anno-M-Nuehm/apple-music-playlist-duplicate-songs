@@ -56,7 +56,13 @@ final class LibraryViewModel {
         defer { isLoading = false }
         do {
             try await service.ensureAccess()
-            try await service.useLibrary(at: selectedLibraryURL)
+            do {
+                try await service.useLibrary(at: selectedLibraryURL)
+            } catch {
+                // Library switch failed (e.g. copy unreachable): fall
+                // back to scanning the currently open library.
+                errorMessage = "Could not switch library — using the currently open one.\n\(error.localizedDescription)"
+            }
             let fetched = try await service.fetchPlaylists()
             playlists = fetched.filter { playlist in
                 if playlist.isSmart && !config.playlists.includeSmartPlaylists { return false }

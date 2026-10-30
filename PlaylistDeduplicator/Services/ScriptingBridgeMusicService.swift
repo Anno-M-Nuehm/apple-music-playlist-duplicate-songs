@@ -94,9 +94,14 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
             try await ensureAccess()
             return
         }
+        // Open the library document through NSWorkspace (Finder path):
+        // Music's SB forwarding does not implement the `open` command
+        // (raises an ObjC exception Swift cannot catch). NSWorkspace
+        // launches Music with the chosen library if needed.
         try await MainActor.run { [self] in
-            let app = try musicApp()
-            app.open([url])
+            guard NSWorkspace.shared.open(url) else {
+                throw MusicServiceError(code: .musicNotRunning, message: "Could not open library at \(path)")
+            }
         }
         try await waitForMusicReady()
         activeLibraryPath = path
