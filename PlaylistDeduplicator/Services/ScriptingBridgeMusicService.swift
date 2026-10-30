@@ -154,28 +154,55 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
         try await MainActor.run { [self] in
             let app = try musicApp()
             let playlist = try playlistObject(id: playlistID, in: app)
-            guard let elementArray = playlist.tracks else {
-                throw MusicServiceError(code: .scriptFailed("tracks"), message: "Playlist returned no tracks")
+            // Bulk fetch: ONE Apple event for every track's metadata.
+            // Per-property SB reads cost an Apple event per track per
+            // property — minutes on large playlists. A plain NSAppleScript
+            // (no `on run` handler, so executeAndReturnError runs it
+            // directly) builds a delimited record stream in a single
+            // event. The script text embeds ONLY the playlist's
+            // validated numeric id — never user data — so there is no
+            // injection surface.
+            let id = Int(playlistID)
+            let source = """
+                on safeText(v)
+                    try
+                        return v as text
+                    on error
+                        return ""
+                    end try
+                end safeText
+
+                tell application "Music"
+                    set fieldSep to ASCII character 1
+                    set recordSep to ASCII character 2
+                    set target to first playlist whose id is \(id)
+                    set output to ""
+                    repeat with t in (every track of target)
+                        set output to output & (my safeText(persistent ID of t)) & fieldSep & (my safeText(name of t)) & fieldSep & (my safeText(artist of t)) & fieldSep & (my safeText(album of t)) & fieldSep & (my safeText(duration of t as text)) & recordSep
+                    end repeat
+                    return output
+                end tell
+                """
+            guard let script = NSAppleScript(source: source) else {
+                throw MusicServiceError(code: .scriptFailed("init"), message: "Could not create bulk fetch script")
             }
-            // Batch: `get()` fetches every track of the playlist in ONE
-            // Apple event; subsequent property access is served from the
-            // local cache instead of one round-trip per track.
-            let tracks = (elementArray.get() as? [NSObject]) ?? []
+            var error: NSDictionary?
+            let reply = script.executeAndReturnError(&error)
+            guard error == nil else { throw Self.bulkFetchError(error) }
+            let output = reply.stringValue ?? ""
             var entries: [PlaylistEntry] = []
-            for (position, object) in tracks.enumerated() {
-                let track = unsafeBitCast(object, to: MusicTrack.self)
+            for (position, record) in output.split(separator: "\u{2}", omittingEmptySubsequences: true).enumerated() {
+                let fields = record.split(separator: "\u{1}", omittingEmptySubsequences: false)
+                guard fields.count == 5 else { continue }
                 entries.append(PlaylistEntry(
                     playlistID: playlistID,
                     index: position + 1,
                     track: Track(
-                        persistentID: Self.parsePersistentID(track.persistentID),
-                        title: track.name ?? "",
-                        artist: track.artist ?? "",
-                        album: track.album ?? "",
-                        duration: track.duration,
-                        // location is not read during scans: one Apple
-                        // event per track saved; it is not needed for
-                        // duplicate detection.
+                        persistentID: Self.parsePersistentID(String(fields[0])),
+                        title: String(fields[1]),
+                        artist: String(fields[2]),
+                        album: String(fields[3]),
+                        duration: Double(fields[4]) ?? 0,
                         location: nil
                     )
                 ))
@@ -207,6 +234,12 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
                                         message: "Playlist changed during removal (\(count) → \(newCount), expected \(count - sorted.count))")
             }
         }
+    }
+
+    private static func bulkFetchError(_ error: NSDictionary?) -> MusicServiceError {
+        let number = (error?.value(forKey: NSAppleScript.errorNumber) as? Int).map(String.init) ?? "?"
+        let message = (error?.value(forKey: NSAppleScript.errorMessage) as? String) ?? "AppleScript error"
+        return MusicServiceError(code: .scriptFailed(number), message: message)
     }
 
     private static func parsePersistentID(_ raw: String?) -> UInt64 {
