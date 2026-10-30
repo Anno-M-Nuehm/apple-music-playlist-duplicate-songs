@@ -70,7 +70,7 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
     }
 
     private func isOrdinary(_ playlist: MusicPlaylist) -> Bool {
-        playlist.specialKind == 0
+        Constants.MusicScripting.specialKindNoneValues.contains(playlist.specialKind)
     }
 
     private func playlistObject(id: UInt64, in app: MusicApplication) throws -> MusicUserPlaylist {

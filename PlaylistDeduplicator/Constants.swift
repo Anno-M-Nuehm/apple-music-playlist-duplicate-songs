@@ -34,6 +34,13 @@ enum Constants {
         static let musicAccessErrorDomain = "com.example.PlaylistDeduplicator.music"
     }
 
+    enum MusicScripting {
+        /// SB delivers AppleScript enumerations as four-char codes as
+        /// integers. `special kind = none` is 'kNon' (0x6B4E6F6E); some
+        /// Music versions use plain 0. Ordinary playlists match either.
+        static let specialKindNoneValues: Set<Int> = [0, 0x6B4E6F6E]
+    }
+
     enum Track {
         static let persistentIDRadix = 16
     }
