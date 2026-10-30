@@ -83,16 +83,18 @@ final class LibraryViewModel {
             for playlist in playlists where playlist.trackCount > 1 {
                 // Per-playlist timeout: a single unresponsive playlist
                 // (e.g. very large or on slow storage) must not stall
-                // the whole scan.
-                let entries: [PlaylistEntry]? = await withTaskGroup(of: PlaylistEntry?.self) { group in
-                    group.addTask { try? await self.service.fetchEntries(playlistID: playlist.id) }
+                // the whole scan. Race the fetch against a timer task.
+                let entries: [PlaylistEntry]? = await withTaskGroup(of: [PlaylistEntry]?.self) { group in
+                    group.addTask { [service] in
+                        try? await service.fetchEntries(playlistID: playlist.id)
+                    }
                     group.addTask {
                         try? await Task.sleep(nanoseconds: 15_000_000_000)
                         return nil
                     }
                     let first = await group.next() ?? nil
                     group.cancelAll()
-                    return first
+                    return first ?? nil
                 }
                 if let entries {
                     counts[playlist.id] = detector.duplicateGroups(in: entries).count
