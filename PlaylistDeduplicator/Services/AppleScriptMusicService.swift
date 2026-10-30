@@ -199,7 +199,7 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
         _ = appleScript.compileAndReturnError(&compileError)
         guard compileError == nil else { throw Self.error(for: compileError) }
 
-        let target = NSAppleEventDescriptor.nullDescriptor()
+        let target = NSAppleEventDescriptor.null()
         let event = NSAppleEventDescriptor.appleEvent(
             withEventClass: Constants.AppleEvents.coreSuiteCode,
             eventID: Constants.AppleEvents.subroutineEventCode,
