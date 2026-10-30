@@ -70,6 +70,11 @@ struct DuplicatesBadgePane: View {
             if library.playlists.isEmpty && !library.isLoading {
                 ContentUnavailableView("No duplicates", systemImage: "checkmark.circle",
                                       description: Text("No playlist contains duplicates."))
+            } else if library.playlistsWithDuplicates.isEmpty && !library.isLoading {
+                ContentUnavailableView(
+                    "Nothing flagged yet",
+                    systemImage: "magnifyingglass",
+                    description: Text("Select a playlist to check it for duplicates."))
             }
         }
     }

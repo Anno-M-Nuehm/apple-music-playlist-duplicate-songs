@@ -52,6 +52,30 @@ final class LibraryViewModel {
         playlists.filter { (duplicateCounts[$0.id] ?? 0) > 0 }
     }
 
+    /// Scans one playlist for duplicates and caches the count.
+    /// Called when the user selects a playlist; bounded by a timeout so
+    /// a single unresponsive playlist cannot hang the UI.
+    func scan(playlist: Playlist) async {
+        guard duplicateCounts[playlist.id] == nil, playlist.trackCount > 1 else { return }
+        let entries: [PlaylistEntry]? = await withTaskGroup(of: [PlaylistEntry]?.self) { group in
+            group.addTask { [service] in
+                try? await service.fetchEntries(playlistID: playlist.id)
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 20_000_000_000)
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first ?? nil
+        }
+        if let entries {
+            var counts = duplicateCounts
+            counts[playlist.id] = detector.duplicateGroups(in: entries).count
+            duplicateCounts = counts
+        }
+    }
+
     func load() async {
         isLoading = true
         errorMessage = nil
@@ -73,39 +97,11 @@ final class LibraryViewModel {
                 if playlist.isSmart && !config.playlists.includeSmartPlaylists { return false }
                 return !config.playlists.excludedNames.contains(playlist.name)
             }
-            // Progressive scan: update per playlist so the middle pane
-            // populates incrementally instead of after a long block.
-            // Playlists with fewer than 2 tracks cannot contain
-            // duplicates and are skipped without an Apple event.
-            var counts: [UInt64: Int] = [:]
-            scannedPlaylistCount = 0
-            scanTotal = playlists.count
-            for playlist in playlists where playlist.trackCount > 1 {
-                // Per-playlist timeout: a single unresponsive playlist
-                // (e.g. very large or on slow storage) must not stall
-                // the whole scan. Race the fetch against a timer task.
-                let entries: [PlaylistEntry]? = await withTaskGroup(of: [PlaylistEntry]?.self) { group in
-                    group.addTask { [service] in
-                        try? await service.fetchEntries(playlistID: playlist.id)
-                    }
-                    group.addTask {
-                        try? await Task.sleep(nanoseconds: 15_000_000_000)
-                        return nil
-                    }
-                    let first = await group.next() ?? nil
-                    group.cancelAll()
-                    return first ?? nil
-                }
-                if let entries {
-                    counts[playlist.id] = detector.duplicateGroups(in: entries).count
-                }
-                scannedPlaylistCount += 1
-                duplicateCounts = counts
-                // Yield so the main actor can service UI events between
-                // playlists — keeps selection and panes responsive.
-                await Task.yield()
-            }
-            duplicateCounts = counts
+            // Launch no longer pre-scans every playlist: that took
+            // minutes on large libraries. Playlists are listed instantly;
+            // duplicates for a playlist are computed when the user
+            // selects it (see scan(playlist:)), and cached.
+            duplicateCounts = [:]
         } catch let error as MusicServiceError {
             errorMessage = error.message
         } catch {

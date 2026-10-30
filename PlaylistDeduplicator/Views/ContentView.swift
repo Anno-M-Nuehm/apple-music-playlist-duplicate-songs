@@ -50,7 +50,12 @@ struct ContentView: View {
         }
         .task { await library.load() }
         .onChange(of: selectedPlaylist) { _, playlist in
-            if let playlist { Task { await duplication.load(playlist: playlist) } }
+            if let playlist {
+                Task {
+                    await library.scan(playlist: playlist)
+                    await duplication.load(playlist: playlist)
+                }
+            }
         }
     }
 }
