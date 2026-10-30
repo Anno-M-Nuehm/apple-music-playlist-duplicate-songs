@@ -35,31 +35,49 @@ Support: ConfigStore (config.json), KeychainStore, AIAssistClient (optional)
 ## Decision rationale
 
 ### ScriptingBridge vs. NSAppleScript
-Chosen: **NSAppleScript with parameterized handlers**.
-- ScriptingBridge (`SBApplication`) against Music is brittle: the Music
-  scripting dictionary has long-standing bugs, SB property access is
-  extremely chatty (one Apple event per property per track — fatal for
-  10k+ tracks), and `SBElementArray` deletion of same-track duplicates
-  is unreliable.
-- NSAppleScript lets us pull *all* tracks of a playlist with their
-  properties in a **single Apple event** (record-built string output),
-  which is the batching strategy that keeps 10k+ track libraries fast.
-- Security: every script is a static source string using
-  `on run {param}` positional parameters. No library data (names,
-  titles, paths) is ever interpolated into script text — only the
-  numeric playlist ID and integer indexes are passed, and as typed
-  Apple event descriptors. This eliminates AppleScript injection.
-  See SECURITY.md.
+Both are used, each where it is strong:
+
+- **ScriptingBridge (SB)** drives playlist listing, app resolution,
+  library switching (via NSWorkspace), and entry removal
+  (`SBElementArray.removeObject(at:)`, descending indexes, count
+  verification). Typed declarations live in a checked-in minimal
+  header (`Generated/Music.h`); SB resolves the selectors against
+  Music's sdef at runtime. Because SB objects never actually belong to
+  the header's classes, typed views are created with `unsafeBitCast` —
+  the same compile-time-lens-only semantics ObjC gets implicitly.
+- **NSAppleScript (one bulk script)** fetches a playlist's track
+  metadata in a **single Apple event**: a plain script (no handler)
+  loops `every track` inside Music and returns a delimited record
+  stream. This is the only way to avoid SB's fatal chattiness — SB
+  property reads cost one Apple event per track per property (minutes
+  on large playlists). The script text interpolates ONLY the validated
+  numeric playlist ID; no user data ever touches script text (see
+  SECURITY.md).
+- The bulk script runs without an `on run` handler and is executed via
+  `executeAndReturnError` — the earlier parameterized-handler approach
+  (`«event aevtpsbr»`) failed with error -1708 (errAENoSuchHandler)
+  because the subroutine event must be addressed to the script's own
+  context, not the target application.
+
+### Duplicate detection & scan model
+- Detection priority: persistent ID, then normalized
+  title+artist+album with duration clustering (± tolerance, default
+  2 s, from config.json). Groups from both strategies that share
+  entries are merged (union-find, deduplicated by entry ID).
+- Persistent IDs that fail to parse get unique synthetic IDs — never
+  fabricated values, which caused phantom duplicate groups.
+- **Lazy scan**: launch lists playlists only; a playlist's tracks are
+  fetched exactly once, on selection (timeout-bounded at 20 s), and
+  the duplicate count is cached for the session. No upfront
+  full-library scan — that took minutes on real libraries.
 
 ### Removing duplicates when identical entries share a track ID
 Music cannot delete "the second occurrence of track X" by ID — both
-occurrences have the same ID. Workaround: entries are identified by
-their **1-based playlist index** (from the batched fetch), and removal
-deletes `track idx of playlist` in one script, with indexes passed in
-**descending order** (no index shifting), guarded by a before/after
-track-count check inside the same script. On any mismatch the script
-returns "MISMATCH" and nothing is committed — the app surfaces an
-error instead. Only one playlist is ever referenced.
+occurrences have the same ID. Entries are therefore identified by
+their **1-based playlist index** from the bulk fetch, and removal
+deletes by descending index via `SBElementArray.removeObject(at:)`,
+guarded by a count check before and after. Only one playlist is ever
+referenced.
 
 ### Duplicate matching strategy
 1. Same persistent ID ⇒ same track ⇒ duplicate (highest confidence).
