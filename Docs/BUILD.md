@@ -28,6 +28,22 @@ Then:
    accept — the project ships with automatic signing and a placeholder
    team you must replace (next step).
 
+### Makefile shortcuts
+
+The repo includes a `Makefile` wrapping the xcodebuild commands:
+
+| Target | Effect |
+|---|---|
+| `make xcodeproj` | `xcodegen generate` — create the Xcode project |
+| `make clean` | `xcodebuild clean` |
+| `make build` | `xcodebuild build` (for running; runs `xcodeproj` first) |
+| `make build-test` | `xcodebuild build-for-testing` |
+| `make test` | `xcodebuild test` |
+| `make run` | build, then `open` the built app (locates it via `BUILT_PRODUCTS_DIR`) |
+
+Signing is configured in Xcode once (next section); the make targets use
+whatever the project's automatic signing provides.
+
 ## 2. Configure signing
 
 1. Select the **PlaylistDeduplicator** target → **Signing & Capabilities**.
