@@ -11,7 +11,7 @@ enum Constants {
 
     enum Playlists {
         static let defaultExcludedNames: Set<String> = ["Music", "Movies", "TV Shows", "Podcasts", "Audiobooks"]
-        static let includeSmartPlaylists = false
+        static let includeSmartPlaylists = true
     }
 
     enum AIAssist {

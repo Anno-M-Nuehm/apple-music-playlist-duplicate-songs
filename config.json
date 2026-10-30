@@ -7,7 +7,7 @@
   },
   "playlists": {
     "excludedNames": ["Music", "Movies", "TV Shows", "Podcasts", "Audiobooks"],
-    "includeSmartPlaylists": false
+    "includeSmartPlaylists": true
   },
   "aiAssist": {
     "enabled": true,
