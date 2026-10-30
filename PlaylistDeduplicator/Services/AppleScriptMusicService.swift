@@ -5,27 +5,38 @@ import Foundation
 ///
 /// Security: every script is a static source string whose `run` handler
 /// takes positional parameters. Only typed, validated values (playlist
-/// persistent-ID strings, integer indexes) are passed as Apple event
-/// parameters — no library data is ever interpolated into script text,
-/// eliminating AppleScript injection. Library data only flows back as the
-/// script's return value, which is parsed, never executed.
+/// IDs, integer indexes) are passed as Apple event parameters — no
+/// library data is ever interpolated into script text, eliminating
+/// AppleScript injection. Library data only flows back as the script's
+/// return value, which is parsed, never executed.
 ///
-/// Playlist targeting uses Music's persistent ID (a hex string), which is
-/// exact and stable; Music's numeric `id` can overflow Int32 event
-/// descriptors for large libraries.
+/// Notes on Music's scripting surface (learned the hard way):
+/// - Playlists are keyed by their integer `id` (persistent ID is a
+///   track property and is not reliably available on playlists).
+/// - Track metadata fields can be `missing value` (streaming tracks,
+///   incomplete tags), so every field is coerced through a `safeText`
+///   helper that yields "" instead of throwing.
 final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.example.PlaylistDeduplicator.applescript")
     private var activeLibraryPath: String?
     private(set) var lastError: MusicServiceError?
 
     private static let fetchPlaylistsScript = """
+        on safeText(v)
+            try
+                return v as text
+            on error
+                return ""
+            end try
+        end safeText
+
         on run {}
             set fieldSep to ASCII character 1
             set recordSep to ASCII character 2
             tell application "Music"
                 set output to ""
                 repeat with p in (every user playlist)
-                    set output to output & (persistent ID of p) & fieldSep & (name of p) & fieldSep & (count of tracks of p as text) & fieldSep & ((smart of p) as text) & recordSep
+                    set output to output & (my safeText(id of p)) & fieldSep & (my safeText(name of p)) & fieldSep & (my safeText(count of tracks of p as text)) & fieldSep & (my safeText(smart of p as text)) & recordSep
                 end repeat
                 return output
             end tell
@@ -33,14 +44,22 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
         """
 
     private static let fetchEntriesScript = """
-        on run {playlistPersistentID}
+        on safeText(v)
+            try
+                return v as text
+            on error
+                return ""
+            end try
+        end safeText
+
+        on run {playlistID}
             set fieldSep to ASCII character 1
             set recordSep to ASCII character 2
             tell application "Music"
-                set target to first user playlist whose persistent ID is playlistPersistentID
+                set target to first user playlist whose id is playlistID
                 set output to ""
                 repeat with t in (every track of target)
-                    set output to output & (persistent ID of t) & fieldSep & (name of t) & fieldSep & (artist of t) & fieldSep & (album of t) & fieldSep & ((duration of t) as text) & fieldSep & (location of t as text) & recordSep
+                    set output to output & (my safeText(persistent ID of t)) & fieldSep & (my safeText(name of t)) & fieldSep & (my safeText(artist of t)) & fieldSep & (my safeText(album of t)) & fieldSep & (my safeText(duration of t as text)) & fieldSep & (my safeText(location of t)) & recordSep
                 end repeat
                 return output
             end tell
@@ -52,9 +71,9 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
     /// target indexes. Count checks before and after guard against
     /// concurrent library changes; "MISMATCH" aborts with no changes.
     private static let removeEntriesScript = """
-        on run {playlistPersistentID, indexList, expectedCount}
+        on run {playlistID, indexList, expectedCount}
             tell application "Music"
-                set target to first user playlist whose persistent ID is playlistPersistentID
+                set target to first user playlist whose id is playlistID
                 if (count of tracks of target) is not expectedCount then
                     return "MISMATCH"
                 end if
@@ -65,6 +84,15 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
                     return "MISMATCH"
                 end if
                 return "OK"
+            end tell
+        end run
+        """
+
+    private static let useLibraryScript = """
+        on run {libraryPath}
+            tell application "Music"
+                open (POSIX file libraryPath)
+                return name
             end tell
         end run
         """
@@ -84,15 +112,6 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
         }
     }
 
-    private static let useLibraryScript = """
-        on run {libraryPath}
-            tell application "Music"
-                open (POSIX file libraryPath)
-                return name
-            end tell
-        end run
-        """
-
     func useLibrary(at url: URL?) async throws {
         guard let url else { return }
         let path = url.path
@@ -106,8 +125,6 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
             _ = try execute(script: Self.useLibraryScript, handler: Constants.AppleEvents.scriptHandlerName,
                             parameters: [path])
         }
-        // Music switches libraries asynchronously; wait until it responds
-        // again before any scan touches the new library.
         try await waitForMusicReady()
         activeLibraryPath = path
     }
@@ -149,7 +166,7 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
                 throw MusicServiceError(code: .safetyCheckFailed, message: "Index out of range")
             }
             let result = try execute(script: Self.removeEntriesScript, handler: Constants.AppleEvents.scriptHandlerName,
-                                    parameters: [Self.persistentIDString(playlistID), sorted, entries.count])
+                                    parameters: [Int(playlistID), sorted, entries.count])
             guard result == "OK" else {
                 throw MusicServiceError(code: .safetyCheckFailed, message: "Playlist changed during removal")
             }
@@ -158,16 +175,15 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
 
     private func executeFetchEntries(playlistID: UInt64) throws -> [PlaylistEntry] {
         let output = try execute(script: Self.fetchEntriesScript, handler: Constants.AppleEvents.scriptHandlerName,
-                                 parameters: [Self.persistentIDString(playlistID)])
+                                 parameters: [Int(playlistID)])
         return output
             .split(separator: "\u{2}", omittingEmptySubsequences: true)
             .enumerated()
             .compactMap { Self.parseEntry($0.element, playlistID: playlistID, index: $0.offset + 1) }
     }
 
-    /// Compiles `source`, builds a subroutine Apple event (`«event aevtpsbr»`
-    /// with handler name in `snam` and parameters as the direct object), and
-    /// executes it with the compiled script's context.
+    /// Compiles `source`, builds a subroutine Apple event and executes it
+    /// with the compiled script's context.
     private func execute(script source: String, handler: String, parameters: [Any]) throws -> String {
         var compileError: NSDictionary?
         guard let appleScript = NSAppleScript(source: source) else {
@@ -198,12 +214,6 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
         return reply.stringValue ?? ""
     }
 
-    /// Music persistent IDs are hex strings; keeping them as strings avoids
-    /// any numeric conversion loss and keeps them out of script text.
-    private static func persistentIDString(_ id: UInt64) -> String {
-        String(id, radix: Constants.AppleEvents.persistentIDRadix, uppercase: true)
-    }
-
     private static func descriptor(for value: Any) -> NSAppleEventDescriptor {
         switch value {
         case let int as Int:
@@ -225,7 +235,7 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
 
     private static func parsePlaylist(_ record: Substring) -> Playlist? {
         let fields = record.split(separator: "\u{1}", omittingEmptySubsequences: false)
-        guard fields.count == 4, let id = UInt64(fields[0], radix: Constants.AppleEvents.persistentIDRadix) else { return nil }
+        guard fields.count == 4, let id = UInt64(fields[0]) else { return nil }
         return Playlist(
             id: id,
             name: String(fields[1]),
@@ -249,13 +259,24 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
         return PlaylistEntry(playlistID: playlistID, index: index, track: track)
     }
 
+    /// Composes a diagnostic message from every field NSAppleScript
+    /// provides, so runtime failures are actionable instead of a
+    /// generic "AppleScript error".
     private static func error(for error: NSDictionary?) -> MusicServiceError {
-        guard let error, let number = error.value(forKey: NSAppleScript.errorNumber) as? Int else {
+        guard let error else {
             return MusicServiceError(code: .scriptFailed("unknown"), message: "Unknown AppleScript error")
         }
-        let message = (error.value(forKey: NSAppleScript.errorMessage) as? String) ?? "AppleScript error"
-        if number == -1743 { return MusicServiceError(code: .notAuthorized, message: "Not authorized to send Apple Events to Music") }
-        return MusicServiceError(code: .scriptFailed(String(number)), message: message)
+        let number = (error.value(forKey: NSAppleScript.errorNumber) as? Int).map(String.init) ?? "?"
+        if let numberInt = Int(number), numberInt == -1743 {
+            return MusicServiceError(code: .notAuthorized, message: "Not authorized to send Apple Events to Music. Enable it in System Settings ▸ Privacy & Security ▸ Automation.")
+        }
+        var parts: [String] = []
+        if let brief = error.value(forKey: NSAppleScript.errorBriefMessage) as? String { parts.append(brief) }
+        if let message = error.value(forKey: NSAppleScript.errorMessage) as? String { parts.append(message) }
+        if let appName = error.value(forKey: NSAppleScript.errorAppName) as? String { parts.append("app: \(appName)") }
+        parts.append("error \(number)")
+        let text = parts.joined(separator: " — ")
+        return MusicServiceError(code: .scriptFailed(number), message: text)
     }
 }
 
