@@ -5,97 +5,71 @@ import ScriptingBridge
 /// Real Music integration via ScriptingBridge — pure Swift, no
 /// AppleScript source text, no Python.
 ///
-/// Without a generated scripting header, ScriptingBridge property
-/// access goes through `perform(Selector(...))`: SBObject resolves
-/// unknown selectors dynamically against the application's sdef
-/// (that is ScriptingBridge's built-in dispatch mechanism). Casting an
-/// SBApplication to a hand-written @objc protocol does NOT work —
-/// runtime protocol conformance is not dynamic — so selectors are used
-/// directly instead.
+/// Uses the standard sdp-generated interface in Generated/Music.h
+/// (bridged through MusicScripting.h). All calls are typed; SBObject's
+/// documented method resolution handles everything — no dynamic
+/// `perform(Selector(...))` (which crashes: SB returns non-object
+/// descriptors that Swift retains as garbage pointers) and no
+/// hand-written @objc protocol casts (which fail: SB objects don't
+/// declare conformance).
 ///
-/// - Reads send Music's native `get` events; only typed values cross
-///   the boundary. No string is ever compiled or executed, so there is
-///   no script-injection surface at all.
+/// - SBApplication/SBObject are not thread-safe: every call runs on
+///   the main actor.
 /// - Removal uses `SBElementArray.removeObject(at:)` on the selected
-///   playlist's `tracks` array — Music's native delete for that
-///   element. It removes a playlist entry only: never the file, never
-///   another playlist. A count check after removal verifies the result.
-/// - All work runs on a serial queue; the UI never blocks.
+///   playlist's tracks — Music's native delete for that element. It
+///   removes a playlist entry only: never the file, never another
+///   playlist. A count check after removal verifies the result.
 final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendable {
-    /// SBApplication and all SB objects are NOT thread-safe; every
-    /// scripting call must run on the main thread (main actor).
-    /// Off-main use crashes with EXC_BAD_ACCESS.
     private var activeLibraryPath: String?
     private(set) var lastError: MusicServiceError?
 
-    // MARK: - App resolution
-
-    private func musicApp() throws -> SBApplication {
+    private func musicApp() throws -> MusicApplication {
         if let app = Self.resolveMusicApp() {
             return app
         }
         throw MusicServiceError(code: .musicNotRunning, message: "Music is not installed or cannot be launched")
     }
 
-    /// SBApplication(bundleIdentifier:) returns nil for system apps on
-    /// some macOS versions; resolve the app from the running process or
-    /// its bundle URL instead.
-    private static func resolveMusicApp() -> SBApplication? {
-        if let app = SBApplication(bundleIdentifier: Constants.App.musicAppBundleID) {
+    private static func resolveMusicApp() -> MusicApplication? {
+        if let app = SBApplication(bundleIdentifier: Constants.App.musicAppBundleID) as? MusicApplication {
             return app
         }
         if let running = NSRunningApplication.runningApplications(withBundleIdentifier: Constants.App.musicAppBundleID).first,
-           let url = running.bundleURL {
-            return SBApplication(url: url)
+           let url = running.bundleURL,
+           let app = SBApplication(url: url) as? MusicApplication {
+            return app
         }
         for path in ["/System/Applications/Music.app", "/Applications/Music.app"]
         where FileManager.default.fileExists(atPath: path) {
-            return SBApplication(url: URL(fileURLWithPath: path))
+            if let app = SBApplication(url: URL(fileURLWithPath: path)) as? MusicApplication {
+                return app
+            }
         }
         return nil
     }
 
-    // MARK: - Dynamic property access
-
-    /// Sends the property-getter Apple event for `name` and returns the
-    /// resulting value, or nil.
-    @discardableResult
-    private static func value(_ object: NSObject, _ name: String) -> Any? {
-        object.perform(Selector(name))?.takeUnretainedValue()
+    private func userPlaylists(in app: MusicApplication) throws -> SBElementArray {
+        guard let playlists = app.userPlaylists() as SBElementArray? else {
+            throw MusicServiceError(code: .scriptFailed("userPlaylists"), message: "Music returned no user playlists")
+        }
+        return playlists
     }
 
-    private static func string(_ object: NSObject, _ name: String) -> String? {
-        value(object, name) as? String
+    private func playlistObject(id: UInt64, in app: MusicApplication) throws -> MusicUserPlaylist {
+        let playlists = try userPlaylists(in: app)
+        for index in 0..<playlists.count {
+            if let playlist = playlists.object(at: index) as? MusicUserPlaylist,
+               playlist.id == Int(id) {
+                return playlist
+            }
+        }
+        throw MusicServiceError(code: .safetyCheckFailed, message: "Playlist not found")
     }
-
-    private static func int(_ object: NSObject, _ name: String) -> Int? {
-        if let number = value(object, name) as? NSNumber { return number.intValue }
-        if let text = value(object, name) as? String { return Int(text) }
-        return nil
-    }
-
-    private static func double(_ object: NSObject, _ name: String) -> Double? {
-        if let number = value(object, name) as? NSNumber { return number.doubleValue }
-        if let text = value(object, name) as? String { return Double(text) }
-        return nil
-    }
-
-    private static func bool(_ object: NSObject, _ name: String) -> Bool {
-        if let number = value(object, name) as? NSNumber { return number.boolValue }
-        if let text = value(object, name) as? String { return text == "true" }
-        return false
-    }
-
-    private static func elementArray(_ object: NSObject, _ name: String) -> SBElementArray? {
-        value(object, name) as? SBElementArray
-    }
-
-    // MARK: - MusicLibraryService
 
     func ensureAccess() async throws {
         try await MainActor.run { [self] in
             let app = try musicApp()
-            guard Self.string(app, "name") != nil else {
+            guard app.name != nil else {
                 throw MusicServiceError(code: .musicNotRunning, message: "Music did not respond")
             }
         }
@@ -110,7 +84,7 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
         }
         try await MainActor.run { [self] in
             let app = try musicApp()
-            _ = app.perform(Selector("open:"), with: url as NSURL)?.takeUnretainedValue()
+            app.open?([url])
         }
         try await waitForMusicReady()
         activeLibraryPath = path
@@ -131,17 +105,15 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
     func fetchPlaylists() async throws -> [Playlist] {
         try await MainActor.run { [self] in
             let app = try musicApp()
-            guard let playlists = Self.elementArray(app, "playlists") else {
-                throw MusicServiceError(code: .scriptFailed("playlists"), message: "Music returned no playlists element")
-            }
+            let playlists = try userPlaylists(in: app)
             var result: [Playlist] = []
             for index in 0..<playlists.count {
-                guard let playlist = playlists.object(at: index) as? NSObject else { continue }
+                guard let playlist = playlists.object(at: index) as? MusicUserPlaylist else { continue }
                 result.append(Playlist(
-                    id: UInt64(Self.int(playlist, "id") ?? 0),
-                    name: Self.string(playlist, "name") ?? "",
-                    trackCount: Self.elementArray(playlist, "tracks")?.count ?? 0,
-                    isSmart: Self.bool(playlist, "smart")
+                    id: UInt64(playlist.id),
+                    name: playlist.name ?? "",
+                    trackCount: playlist.tracks()?.count ?? 0,
+                    isSmart: playlist.smart
                 ))
             }
             return result
@@ -152,22 +124,22 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
         try await MainActor.run { [self] in
             let app = try musicApp()
             let playlist = try playlistObject(id: playlistID, in: app)
-            let tracks = try Self.elementArray(playlist, "tracks") ?? {
-                throw MusicServiceError(code: .scriptFailed("tracks"), message: "Playlist returned no tracks element")
-            }()
+            guard let tracks = playlist.tracks() as SBElementArray? else {
+                throw MusicServiceError(code: .scriptFailed("tracks"), message: "Playlist returned no tracks")
+            }
             var entries: [PlaylistEntry] = []
             for index in 0..<tracks.count {
-                guard let track = tracks.object(at: index) as? NSObject else { continue }
+                guard let track = tracks.object(at: index) as? MusicTrack else { continue }
                 entries.append(PlaylistEntry(
                     playlistID: playlistID,
                     index: index + 1,
                     track: Track(
-                        persistentID: Self.parsePersistentID(Self.string(track, "persistentID")),
-                        title: Self.string(track, "name") ?? "",
-                        artist: Self.string(track, "artist") ?? "",
-                        album: Self.string(track, "album") ?? "",
-                        duration: Self.double(track, "duration") ?? 0,
-                        location: Self.value(track, "location") as? URL
+                        persistentID: Self.parsePersistentID(track.persistentID),
+                        title: track.name ?? "",
+                        artist: track.artist ?? "",
+                        album: track.album ?? "",
+                        duration: track.duration,
+                        location: track.location
                     )
                 ))
             }
@@ -179,9 +151,9 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
         try await MainActor.run { [self] in
             let app = try musicApp()
             let playlist = try playlistObject(id: playlistID, in: app)
-            let tracks = try Self.elementArray(playlist, "tracks") ?? {
-                throw MusicServiceError(code: .scriptFailed("tracks"), message: "Playlist returned no tracks element")
-            }()
+            guard let tracks = playlist.tracks() as SBElementArray? else {
+                throw MusicServiceError(code: .scriptFailed("tracks"), message: "Playlist returned no tracks")
+            }
             let count = tracks.count
             let sorted = Set(indexes).sorted(by: >)
             guard !sorted.isEmpty,
@@ -192,25 +164,12 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
             for index in sorted {
                 tracks.removeObject(at: index - 1)
             }
-            let newCount = (Self.elementArray(playlist, "tracks") ?? tracks).count
+            let newCount = playlist.tracks()?.count ?? count
             guard newCount == count - sorted.count else {
                 throw MusicServiceError(code: .safetyCheckFailed,
                                         message: "Playlist changed during removal (\(count) → \(newCount), expected \(count - sorted.count))")
             }
         }
-    }
-
-    private func playlistObject(id: UInt64, in app: SBApplication) throws -> NSObject {
-        guard let playlists = Self.elementArray(app, "playlists") else {
-            throw MusicServiceError(code: .scriptFailed("playlists"), message: "Music returned no playlists element")
-        }
-        for index in 0..<playlists.count {
-            if let playlist = playlists.object(at: index) as? NSObject,
-               Self.int(playlist, "id") == Int(id) {
-                return playlist
-            }
-        }
-        throw MusicServiceError(code: .safetyCheckFailed, message: "Playlist not found")
     }
 
     private static func parsePersistentID(_ raw: String?) -> UInt64 {

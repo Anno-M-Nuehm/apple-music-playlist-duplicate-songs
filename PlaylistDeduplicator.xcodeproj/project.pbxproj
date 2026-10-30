@@ -318,6 +318,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_HARDENED_RUNTIME = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = PlaylistDeduplicator/MusicScripting.h;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Playlist Deduplicator";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
@@ -343,6 +344,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_HARDENED_RUNTIME = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = PlaylistDeduplicator/MusicScripting.h;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Playlist Deduplicator";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
@@ -362,6 +364,7 @@
 		A100000000000000000040 /* Debug (tests) */ = {isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				SWIFT_OBJC_BRIDGING_HEADER = PlaylistDeduplicator/MusicScripting.h;
 				GENERATE_INFOPLIST_FILE = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.PlaylistDeduplicatorTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -374,6 +377,7 @@
 		A100000000000000000041 /* Release (tests) */ = {isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				SWIFT_OBJC_BRIDGING_HEADER = PlaylistDeduplicator/MusicScripting.h;
 				GENERATE_INFOPLIST_FILE = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.PlaylistDeduplicatorTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
