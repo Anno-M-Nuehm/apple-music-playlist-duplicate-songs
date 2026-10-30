@@ -145,7 +145,7 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
         guard let raw else { return 0 }
         return UInt64(raw, radix: Constants.Track.persistentIDRadix)
             ?? UInt64(raw)
-            ?? raw.hashValue.magnitude
+            ?? UInt64(raw.hashValue.magnitude)
     }
 }
 
