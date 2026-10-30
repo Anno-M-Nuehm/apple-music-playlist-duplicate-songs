@@ -30,19 +30,29 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
         throw MusicServiceError(code: .musicNotRunning, message: "Music is not installed or cannot be launched")
     }
 
+    /// SBApplication instances are always the base SBApplication class;
+    /// generated-header subclasses are a compile-time lens only (ObjC
+    /// never downcasts — it relies on SBObject's dynamic method
+    /// forwarding). Swift's `as?` performs a real runtime class check and
+    /// always fails, so the typed view is created with unsafeBitCast:
+    /// identical object, identical runtime behavior, typed accessors.
+    private static func typed(_ app: SBApplication) -> MusicApplication {
+        unsafeBitCast(app, to: MusicApplication.self)
+    }
+
     private static func resolveMusicApp() -> MusicApplication? {
-        if let app = SBApplication(bundleIdentifier: Constants.App.musicAppBundleID) as? MusicApplication {
-            return app
+        if let app = SBApplication(bundleIdentifier: Constants.App.musicAppBundleID) {
+            return typed(app)
         }
         if let running = NSRunningApplication.runningApplications(withBundleIdentifier: Constants.App.musicAppBundleID).first,
            let url = running.bundleURL,
-           let app = SBApplication(url: url) as? MusicApplication {
-            return app
+           let app = SBApplication(url: url) {
+            return typed(app)
         }
         for path in ["/System/Applications/Music.app", "/Applications/Music.app"]
         where FileManager.default.fileExists(atPath: path) {
-            if let app = SBApplication(url: URL(fileURLWithPath: path)) as? MusicApplication {
-                return app
+            if let app = SBApplication(url: URL(fileURLWithPath: path)) {
+                return typed(app)
             }
         }
         return nil
@@ -58,9 +68,11 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
     private func playlistObject(id: UInt64, in app: MusicApplication) throws -> MusicUserPlaylist {
         let playlists = try userPlaylists(in: app)
         for index in 0..<playlists.count {
-            if let playlist = playlists.object(at: index) as? MusicUserPlaylist,
-               playlist.id == Int(id) {
-                return playlist
+            if let object = playlists.object(at: index) as? NSObject {
+                let playlist = unsafeBitCast(object, to: MusicUserPlaylist.self)
+                if playlist.id == Int(id) {
+                    return playlist
+                }
             }
         }
         throw MusicServiceError(code: .safetyCheckFailed, message: "Playlist not found")
@@ -108,7 +120,8 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
             let playlists = try userPlaylists(in: app)
             var result: [Playlist] = []
             for index in 0..<playlists.count {
-                guard let playlist = playlists.object(at: index) as? MusicUserPlaylist else { continue }
+                guard let object = playlists.object(at: index) as? NSObject else { continue }
+                let playlist = unsafeBitCast(object, to: MusicUserPlaylist.self)
                 result.append(Playlist(
                     id: UInt64(playlist.id),
                     name: playlist.name ?? "",
@@ -129,7 +142,8 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
             }
             var entries: [PlaylistEntry] = []
             for index in 0..<tracks.count {
-                guard let track = tracks.object(at: index) as? MusicTrack else { continue }
+                guard let object = tracks.object(at: index) as? NSObject else { continue }
+                let track = unsafeBitCast(object, to: MusicTrack.self)
                 entries.append(PlaylistEntry(
                     playlistID: playlistID,
                     index: index + 1,
