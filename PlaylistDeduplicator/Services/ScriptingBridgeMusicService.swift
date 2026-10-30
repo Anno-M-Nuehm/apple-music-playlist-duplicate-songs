@@ -131,8 +131,8 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
         try await MainActor.run { [self] in
             let app = try musicApp()
             let elementArray = try allPlaylists(in: app)
-            // Batch: one Apple event for all playlists.
-            let objects = elementArray.array() as? [NSObject] ?? []
+            // Batch: `get()` — one Apple event for all playlists.
+            let objects = (elementArray.get() as? [NSObject]) ?? []
             var result: [Playlist] = []
             for object in objects {
                 let playlist = unsafeBitCast(object, to: MusicPlaylist.self)
@@ -155,10 +155,10 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
             guard let elementArray = playlist.tracks else {
                 throw MusicServiceError(code: .scriptFailed("tracks"), message: "Playlist returned no tracks")
             }
-            // Batch: `array()` fetches every track of the playlist in ONE
+            // Batch: `get()` fetches every track of the playlist in ONE
             // Apple event; subsequent property access is served from the
             // local cache instead of one round-trip per track.
-            let tracks = elementArray.array() as? [NSObject] ?? []
+            let tracks = (elementArray.get() as? [NSObject]) ?? []
             var entries: [PlaylistEntry] = []
             for (position, object) in tracks.enumerated() {
                 let track = unsafeBitCast(object, to: MusicTrack.self)
