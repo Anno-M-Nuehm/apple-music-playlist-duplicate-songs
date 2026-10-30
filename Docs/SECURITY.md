@@ -10,18 +10,21 @@ track titles, file paths) into AppleScript source text. A playlist
 named `foo" & (do shell script "rm -rf ~") & "` would execute
 arbitrarily.
 
-**Mitigation (implemented):** every script in
-`AppleScriptMusicService` is a **static source string** using
-positional `on run {…}` handlers. Only values passed as Apple event
-*parameters* reach Music, and only the playlist ID (a validated
-`UInt64`) and integer indexes (validated `Int`, range-checked in
-`removeEntries`). No string from the library is ever executed or
-interpolated into script text. Library data only flows back as the
-script's return value, which is parsed — never executed.
+**Mitigation (implemented):** exactly one AppleScript exists in the
+codebase — the bulk track-metadata fetch in
+`ScriptingBridgeMusicService.fetchEntries`. Its source text
+interpolates ONLY the playlist's numeric ID, obtained as `Int` from a
+`UInt64` the app itself derived from Music's scripting (not user
+input); a numeric Swift interpolation cannot alter AppleScript syntax.
+No playlist name, track title, file path, or any other library string
+is ever placed in script text. All other Music communication goes
+through ScriptingBridge, where selectors are fixed declarations —
+there is no string execution at all. Library data only flows back as
+the bulk script's return value, which is parsed — never executed.
 
-**Residual risk:** none identified; the injection surface is empty by
-construction. Regression safety: keep this invariant — any new script
-must use parameters, never string building.
+**Residual risk:** none identified; the injection surface is a single
+validated integer. Regression safety: keep this invariant — any new
+script must interpolate numeric validated values only, never strings.
 
 ## 2. Path traversal / file-system writes
 
