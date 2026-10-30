@@ -19,10 +19,36 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
     private(set) var lastError: MusicServiceError?
 
     private func musicApp() throws -> MusicApplicationProtocol {
-        guard let app = SBApplication(bundleIdentifier: Constants.App.musicAppBundleID) as? MusicApplicationProtocol else {
-            throw MusicServiceError(code: .musicNotRunning, message: "Music is not installed or cannot be launched")
+        if let app = Self.resolveMusicApp() {
+            return app
         }
-        return app
+        throw MusicServiceError(code: .musicNotRunning, message: "Music is not installed or cannot be launched")
+    }
+
+    /// SBApplication(bundleIdentifier:) returns nil for system apps on
+    /// some macOS versions; resolve the app from the running process or
+    /// its bundle URL instead.
+    private static func resolveMusicApp() -> MusicApplicationProtocol? {
+        if let app = SBApplication(bundleIdentifier: Constants.App.musicAppBundleID) as? MusicApplicationProtocol {
+            return app
+        }
+        if let running = NSRunningApplication.runningApplications(withBundleIdentifier: Constants.App.musicAppBundleID).first,
+           let url = running.bundleURL,
+           let app = SBApplication(url: url) as? MusicApplicationProtocol {
+            return app
+        }
+        let candidatePaths = [
+            "/System/Applications/Music.app",
+            "/Applications/Music.app"
+        ]
+        for path in candidatePaths {
+            let url = URL(fileURLWithPath: path)
+            if FileManager.default.fileExists(atPath: path),
+               let app = SBApplication(url: url) as? MusicApplicationProtocol {
+                return app
+            }
+        }
+        return nil
     }
 
     private func playlist(for id: UInt64, in app: MusicApplicationProtocol) throws -> MusicPlaylistProtocol {
