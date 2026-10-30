@@ -7,6 +7,8 @@ final class LibraryViewModel {
     private(set) var playlists: [Playlist] = []
     private(set) var duplicateCounts: [UInt64: Int] = [:]
     private(set) var isLoading = false
+    private(set) var scannedPlaylistCount = 0
+    private(set) var scanTotal = 0
     var errorMessage: String?
 
     /// The Music library to analyze; nil means the currently open one.
@@ -76,11 +78,30 @@ final class LibraryViewModel {
             // Playlists with fewer than 2 tracks cannot contain
             // duplicates and are skipped without an Apple event.
             var counts: [UInt64: Int] = [:]
+            scannedPlaylistCount = 0
+            scanTotal = playlists.count
             for playlist in playlists where playlist.trackCount > 1 {
-                if let entries = try? await service.fetchEntries(playlistID: playlist.id) {
-                    counts[playlist.id] = detector.duplicateGroups(in: entries).count
-                    duplicateCounts = counts
+                // Per-playlist timeout: a single unresponsive playlist
+                // (e.g. very large or on slow storage) must not stall
+                // the whole scan.
+                let entries: [PlaylistEntry]? = await withTaskGroup(of: PlaylistEntry?.self) { group in
+                    group.addTask { try? await self.service.fetchEntries(playlistID: playlist.id) }
+                    group.addTask {
+                        try? await Task.sleep(nanoseconds: 15_000_000_000)
+                        return nil
+                    }
+                    let first = await group.next() ?? nil
+                    group.cancelAll()
+                    return first
                 }
+                if let entries {
+                    counts[playlist.id] = detector.duplicateGroups(in: entries).count
+                }
+                scannedPlaylistCount += 1
+                duplicateCounts = counts
+                // Yield so the main actor can service UI events between
+                // playlists — keeps selection and panes responsive.
+                await Task.yield()
             }
             duplicateCounts = counts
         } catch let error as MusicServiceError {

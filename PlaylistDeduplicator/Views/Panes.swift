@@ -27,9 +27,16 @@ struct PlaylistsPane: View {
             if library.isLoading { ProgressView() }
         }
         .safeAreaInset(edge: .bottom) {
-            if let error = library.errorMessage {
-                Text(error).font(.callout).foregroundStyle(.red).padding(6)
+            VStack(alignment: .leading, spacing: 4) {
+                if library.isLoading && library.scanTotal > 0 {
+                    Text("Scanning playlists \(library.scannedPlaylistCount)/\(library.scanTotal)")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if let error = library.errorMessage {
+                    Text(error).font(.callout).foregroundStyle(.red).padding(6)
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

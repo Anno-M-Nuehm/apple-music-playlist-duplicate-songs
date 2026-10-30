@@ -173,7 +173,10 @@ final class ScriptingBridgeMusicService: MusicLibraryService, @unchecked Sendabl
                         artist: track.artist ?? "",
                         album: track.album ?? "",
                         duration: track.duration,
-                        location: track.location
+                        // location is not read during scans: one Apple
+                        // event per track saved; it is not needed for
+                        // duplicate detection.
+                        location: nil
                     )
                 ))
             }
