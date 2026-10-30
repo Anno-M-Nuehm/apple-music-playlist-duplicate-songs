@@ -2,6 +2,10 @@
 # Generates the ScriptingBridge header for Music (Generated/Music.h).
 #
 # Run once after cloning; re-run when Music's scripting dictionary changes.
+#
+# Strategy: use the `sdef` tool to extract the scripting dictionary from a
+# Music.app bundle (sdp alone cannot open bundles on recent macOS), then
+# convert it with `sdp`.
 
 set -euo pipefail
 
@@ -12,70 +16,61 @@ SDEF_PATH="$OUT_DIR/Music.sdef"
 
 mkdir -p "$OUT_DIR"
 
-try_sdef() {
-    local src="$1"
-    echo "Trying sdef: $src"
-    if sdp -fh -o "$HEADER_PATH" --basename Music "$src" 2>&1; then
-        if [ -s "$HEADER_PATH" ]; then
-            echo "OK: wrote $HEADER_PATH"
-            exit 0
-        fi
-    fi
-    echo "  (failed)"
-    return 1
-}
+candidates=()
 
-try_bundle() {
-    local bundle="$1"
-    if [ -d "$bundle" ]; then
-        echo "Trying bundle: $bundle"
-        if sdp -fh -o "$HEADER_PATH" --basename Music "$bundle" 2>&1; then
-            if [ -s "$HEADER_PATH" ]; then
-                echo "OK: wrote $HEADER_PATH"
-                exit 0
-            fi
-        fi
-        echo "  (failed)"
-    fi
-    return 1
+add_bundle() {
+    [ -d "$1" ] && candidates+=("$1")
 }
 
 # 1. Known install locations.
-for CANDIDATE in \
-    "/System/Applications/Music.app" \
+for BUNDLE in \
     "/Applications/Music.app" \
+    "/System/Applications/Music.app" \
     "$HOME/Applications/Music.app"; do
-    if [ -d "$CANDIDATE" ]; then
-        for SDEF in "$CANDIDATE/Contents/Resources/Music.sdef" "$CANDIDATE/Contents/Music.sdef"; do
-            if [ -f "$SDEF" ]; then
-                try_sdef "$SDEF" || true
-            fi
-        done
-        try_bundle "$CANDIDATE" || true
-    fi
+    add_bundle "$BUNDLE"
 done
 
-# 2. Locate Music via Spotlight (no permissions needed).
-echo "Searching for Music.app via mdfind..."
-while IFS= read -r mdfind_path; do
-    [ -d "$mdfind_path" ] || continue
-    case "$mdfind_path" in
-        *.app) try_bundle "$mdfind_path" || true ;;
+# 2. Spotlight.
+while IFS= read -r found; do
+    case "$found" in
+        *.app) add_bundle "$found" ;;
     esac
 done < <(mdfind "kMDItemCFBundleIdentifier == 'com.apple.Music'" 2>/dev/null | sort -u)
 
-# 3. Locate via running process (ls / proc fallback, no osascript needed).
-echo "Checking running Music processes..."
+# 3. Running Music process.
 for pid in $(pgrep -x Music 2>/dev/null || true); do
-    exe_path="$(lsof -p "$pid" 2>/dev/null | awk '$4=="txt" && /Music\.app/ {print $NF; exit}')"
-    if [ -n "$exe_path" ]; then
-        bundle="$(echo "$exe_path" | sed 's|\(.*\.app\)/.*|\1|')"
-        try_bundle "$bundle" || true
-    fi
+    exe_path="$(ps -o comm= -p "$pid" 2>/dev/null || true)"
+    case "$exe_path" in
+        *.app/*)
+            bundle="$(echo "$exe_path" | sed 's|\(.*\.app\)/.*|\1|')"
+            add_bundle "$bundle"
+            ;;
+    esac
 done
 
-# 4. Last resort: copy sdef from Music's Resources via its Info.plist.
-echo "ERROR: could not generate $HEADER_PATH." >&2
-echo "Please locate Music.app on this Mac and run:" >&2
-echo "  sdp -fh -o '$HEADER_PATH' --basename Music /path/to/Music.app" >&2
+if [ "${#candidates[@]}" -eq 0 ]; then
+    echo "ERROR: no Music.app found." >&2
+    exit 1
+fi
+
+for BUNDLE in "${candidates[@]}"; do
+    echo "Extracting scripting dictionary from: $BUNDLE"
+    if sdef -o "$SDEF_PATH" "$BUNDLE" 2>&1; then
+        if [ -s "$SDEF_PATH" ]; then
+            echo "Converting to header: $HEADER_PATH"
+            if sdp -fh -o "$HEADER_PATH" --basename Music "$SDEF_PATH" 2>&1; then
+                if [ -s "$HEADER_PATH" ]; then
+                    echo "OK: wrote $HEADER_PATH"
+                    exit 0
+                fi
+            fi
+        fi
+    fi
+    echo "  (failed, trying next candidate)"
+done
+
+echo "ERROR: could not generate $HEADER_PATH from any Music.app." >&2
+echo "Locate Music.app on this Mac, then run:" >&2
+echo "  sdef -o '$SDEF_PATH' /path/to/Music.app" >&2
+echo "  sdp -fh -o '$HEADER_PATH' --basename Music '$SDEF_PATH'" >&2
 exit 1
