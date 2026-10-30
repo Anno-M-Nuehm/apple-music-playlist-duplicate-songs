@@ -15,14 +15,17 @@ import Foundation
 /// descriptors for large libraries.
 final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.example.PlaylistDeduplicator.applescript")
+    private var activeLibraryPath: String?
     private(set) var lastError: MusicServiceError?
 
     private static let fetchPlaylistsScript = """
         on run {}
+            set fieldSep to ASCII character 1
+            set recordSep to ASCII character 2
             tell application "Music"
                 set output to ""
                 repeat with p in (every user playlist)
-                    set output to output & (persistent ID of p) & "\\u{0001}" & (name of p) & "\\u{0001}" & (count of tracks of p as text) & "\\u{0001}" & ((smart of p) as text) & "\\u{0002}"
+                    set output to output & (persistent ID of p) & fieldSep & (name of p) & fieldSep & (count of tracks of p as text) & fieldSep & ((smart of p) as text) & recordSep
                 end repeat
                 return output
             end tell
@@ -31,11 +34,13 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
 
     private static let fetchEntriesScript = """
         on run {playlistPersistentID}
+            set fieldSep to ASCII character 1
+            set recordSep to ASCII character 2
             tell application "Music"
                 set target to first user playlist whose persistent ID is playlistPersistentID
                 set output to ""
                 repeat with t in (every track of target)
-                    set output to output & (persistent ID of t) & "\\u{0001}" & (name of t) & "\\u{0001}" & (artist of t) & "\\u{0001}" & (album of t) & "\\u{0001}" & ((duration of t) as text) & "\\u{0001}" & (location of t as text) & "\\u{0002}"
+                    set output to output & (persistent ID of t) & fieldSep & (name of t) & fieldSep & (artist of t) & fieldSep & (album of t) & fieldSep & ((duration of t) as text) & fieldSep & (location of t as text) & recordSep
                 end repeat
                 return output
             end tell
@@ -91,6 +96,12 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
     func useLibrary(at url: URL?) async throws {
         guard let url else { return }
         let path = url.path
+        // Skip when the requested library is already active — reopening
+        // the open library makes Music fail with an AppleScript error.
+        if path == activeLibraryPath {
+            try await ensureAccess()
+            return
+        }
         try await queue.run { [self] in
             _ = try execute(script: Self.useLibraryScript, handler: Constants.AppleEvents.scriptHandlerName,
                             parameters: [path])
@@ -98,6 +109,7 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
         // Music switches libraries asynchronously; wait until it responds
         // again before any scan touches the new library.
         try await waitForMusicReady()
+        activeLibraryPath = path
     }
 
     private func waitForMusicReady() async throws {
@@ -116,7 +128,7 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
         try await queue.run { [self] in
             let output = try execute(script: Self.fetchPlaylistsScript, handler: Constants.AppleEvents.scriptHandlerName, parameters: [])
             return output
-                .split(separator: "\u{0002}", omittingEmptySubsequences: true)
+                .split(separator: recordSep, omittingEmptySubsequences: true)
                 .compactMap(Self.parsePlaylist)
         }
     }
@@ -148,7 +160,7 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
         let output = try execute(script: Self.fetchEntriesScript, handler: Constants.AppleEvents.scriptHandlerName,
                                  parameters: [Self.persistentIDString(playlistID)])
         return output
-            .split(separator: "\u{0002}", omittingEmptySubsequences: true)
+            .split(separator: recordSep, omittingEmptySubsequences: true)
             .enumerated()
             .compactMap { Self.parseEntry($0.element, playlistID: playlistID, index: $0.offset + 1) }
     }
@@ -212,7 +224,7 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
     }
 
     private static func parsePlaylist(_ record: Substring) -> Playlist? {
-        let fields = record.split(separator: "\u{0001}", omittingEmptySubsequences: false)
+        let fields = record.split(separator: fieldSep, omittingEmptySubsequences: false)
         guard fields.count == 4, let id = UInt64(fields[0], radix: Constants.AppleEvents.persistentIDRadix) else { return nil }
         return Playlist(
             id: id,
@@ -223,7 +235,7 @@ final class AppleScriptMusicService: MusicLibraryService, @unchecked Sendable {
     }
 
     private static func parseEntry(_ record: Substring, playlistID: UInt64, index: Int) -> PlaylistEntry? {
-        let fields = record.split(separator: "\u{0001}", omittingEmptySubsequences: false)
+        let fields = record.split(separator: fieldSep, omittingEmptySubsequences: false)
         guard fields.count == 6, let id = UInt64(fields[0], radix: Constants.AppleEvents.persistentIDRadix) else { return nil }
         let location = fields[5].isEmpty ? nil : URL(fileURLWithPath: String(fields[5]))
         let track = Track(
