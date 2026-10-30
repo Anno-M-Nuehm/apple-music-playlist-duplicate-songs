@@ -319,6 +319,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_HARDENED_RUNTIME = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = PlaylistDeduplicator/MusicScripting.h;
+				HEADER_SEARCH_PATHS = PlaylistDeduplicator;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Playlist Deduplicator";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
@@ -345,6 +346,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_HARDENED_RUNTIME = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = PlaylistDeduplicator/MusicScripting.h;
+				HEADER_SEARCH_PATHS = PlaylistDeduplicator;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Playlist Deduplicator";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
@@ -365,6 +367,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				SWIFT_OBJC_BRIDGING_HEADER = PlaylistDeduplicator/MusicScripting.h;
+				HEADER_SEARCH_PATHS = PlaylistDeduplicator;
 				GENERATE_INFOPLIST_FILE = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.PlaylistDeduplicatorTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -378,6 +381,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				SWIFT_OBJC_BRIDGING_HEADER = PlaylistDeduplicator/MusicScripting.h;
+				HEADER_SEARCH_PATHS = PlaylistDeduplicator;
 				GENERATE_INFOPLIST_FILE = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.PlaylistDeduplicatorTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
