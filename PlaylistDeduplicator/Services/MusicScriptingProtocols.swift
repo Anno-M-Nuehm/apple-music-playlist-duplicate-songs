@@ -2,10 +2,16 @@ import Foundation
 import ScriptingBridge
 
 /// Minimal, hand-written ScriptingBridge protocol declarations for the
-/// subset of Music's scripting surface this app needs. Selector names
-/// (persistentID, name, artist, …) map at runtime to Music's sdef codes.
+/// subset of Music's scripting surface this app needs.
+///
+/// SBObject resolves any ObjC property selector dynamically (it
+/// conforms to arbitrary protocols at runtime), so the base protocol
+/// only needs to be `NSObjectProtocol` — the SB-specific marker
+/// protocols are not required and are not exposed uniformly across
+/// SDKs. Property names (persistentID, name, artist, …) map at runtime
+/// to Music's sdef codes.
 
-@objc protocol MusicItemProtocol: SBObjectProtocol {}
+@objc protocol MusicItemProtocol: NSObjectProtocol {}
 
 @objc protocol MusicTrackProtocol: MusicItemProtocol {
     var persistentID: String? { get }
@@ -23,7 +29,7 @@ import ScriptingBridge
     var tracks: SBElementArray? { get }
 }
 
-@objc protocol MusicApplicationProtocol: SBApplicationProtocol {
+@objc protocol MusicApplicationProtocol: NSObjectProtocol {
     var name: String? { get }
     var playlists: SBElementArray? { get }
     @objc optional func open(_ x: [Any]!)
