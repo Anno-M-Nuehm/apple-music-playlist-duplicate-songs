@@ -23,9 +23,12 @@ DESTINATION := platform=macOS
 # in the interactive shell's PATH hijacks xcodebuild's compiler and
 # linker invocations (arm64-apple-darwin20.0.0-ld rejects -Xlinker,
 # its clang rejects -index-store-path); Xcode UI builds are unaffected
-# because they do not inherit the shell PATH. Sanitize it here.
+# because they do not inherit the shell PATH. Keep the standard
+# third-party tool locations (homebrew) so xcodegen & friends still
+# resolve, but ahead of them Apple's toolchain, and drop everything
+# else (notably conda/miniforge) from the inherited PATH.
 XCODE_DEVELOPER_DIR := $(shell xcode-select -p)
-export PATH := $(XCODE_DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/bin:$(XCODE_DEVELOPER_DIR)/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin
+export PATH := $(XCODE_DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/bin:$(XCODE_DEVELOPER_DIR)/usr/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
 .PHONY: all help xcodeproj clean build build-test test run
 
