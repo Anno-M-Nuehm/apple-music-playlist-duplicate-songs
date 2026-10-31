@@ -19,6 +19,14 @@ SCHEME      := PlaylistDeduplicator
 CONFIG      := Debug
 DESTINATION := platform=macOS
 
+# Use Apple's toolchain only. A conda/miniforge cross toolchain earlier
+# in the interactive shell's PATH hijacks xcodebuild's compiler and
+# linker invocations (arm64-apple-darwin20.0.0-ld rejects -Xlinker,
+# its clang rejects -index-store-path); Xcode UI builds are unaffected
+# because they do not inherit the shell PATH. Sanitize it here.
+XCODE_DEVELOPER_DIR := $(shell xcode-select -p)
+export PATH := $(XCODE_DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/bin:$(XCODE_DEVELOPER_DIR)/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin
+
 .PHONY: all help xcodeproj clean build build-test test run
 
 help: ## List available targets

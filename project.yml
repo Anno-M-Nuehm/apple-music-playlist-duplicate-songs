@@ -12,11 +12,6 @@ settings:
   base:
     SWIFT_VERSION: "5.10"
     ENABLE_USER_SCRIPT_SANDBOXING: false
-    # Xcode 27 passes -index-store-path to clang when the index store is
-    # enabled; under plain xcodebuild the flag reaches a clang that
-    # rejects it ("unknown argument"). Disable the index store for
-    # command-line builds; Xcode re-enables it for its own indexing.
-    COMPILER_INDEX_STORE_ENABLE: NO
 
 targets:
   PlaylistDeduplicator:
